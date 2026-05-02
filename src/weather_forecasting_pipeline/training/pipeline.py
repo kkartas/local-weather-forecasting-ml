@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import asdict, is_dataclass
+from importlib import metadata
 from pathlib import Path
 from typing import Any
 
@@ -299,6 +300,13 @@ def _write_metrics_and_plots(config: ExperimentConfig, metrics_df: pd.DataFrame)
         json.dump(metrics_df.where(pd.notna(metrics_df), None).to_dict(orient="records"), fh, indent=2)
     _write_markdown_report(config, metrics_df, reports_dir / "summary.md")
 
+    if not _plotting_environment_compatible():
+        LOGGER.warning(
+            "Plot generation skipped because the installed Matplotlib/NumPy versions are incompatible. "
+            "Install project requirements in a clean environment to enable plots."
+        )
+        return
+
     try:
         from weather_forecasting_pipeline.plotting.plots import (
             plot_actual_vs_predicted,
@@ -390,3 +398,15 @@ def _format_cell(value: Any) -> str:
     if isinstance(value, float):
         return f"{value:.4f}"
     return str(value)
+
+
+def _plotting_environment_compatible() -> bool:
+    """Avoid importing a known incompatible Matplotlib/NumPy binary pair."""
+    try:
+        numpy_version = metadata.version("numpy")
+        matplotlib_version = metadata.version("matplotlib")
+    except metadata.PackageNotFoundError:
+        return False
+    numpy_major = int(numpy_version.split(".", maxsplit=1)[0])
+    matplotlib_major_minor = tuple(int(part) for part in matplotlib_version.split(".")[:2])
+    return not (numpy_major >= 2 and matplotlib_major_minor < (3, 8))

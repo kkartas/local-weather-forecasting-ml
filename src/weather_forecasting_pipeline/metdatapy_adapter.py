@@ -9,6 +9,7 @@ capability, functions raise a clear error and point maintainers to
 from __future__ import annotations
 
 import logging
+import warnings
 from pathlib import Path
 from typing import Iterable
 
@@ -126,7 +127,9 @@ def make_supervised_with_metdatapy(
     """Create lagged supervised targets through MetDataPy."""
     if target not in df.columns:
         raise ValueError(f"Configured target {target!r} is not present in the prepared dataframe")
-    return make_supervised(df, targets=[target], horizons=horizons, lags=lags, drop_na=True)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", pd.errors.PerformanceWarning)
+        return make_supervised(df, targets=[target], horizons=horizons, lags=lags, drop_na=True)
 
 
 def split_by_fraction_with_metdatapy(
@@ -157,10 +160,17 @@ def fit_apply_scaler_with_metdatapy(
     method: str,
 ) -> tuple[dict[str, pd.DataFrame], object]:
     """Fit scaler on train features only and apply it to all splits."""
-    scaler = fit_scaler(splits["train"][feature_columns], method=method, columns=feature_columns)
+    scale_columns = [
+        c
+        for c in feature_columns
+        if c in splits["train"].columns
+        and pd.api.types.is_numeric_dtype(splits["train"][c])
+        and not pd.api.types.is_bool_dtype(splits["train"][c])
+    ]
+    scaler = fit_scaler(splits["train"][scale_columns], method=method, columns=scale_columns)
     scaled = {}
     for name, split in splits.items():
         scaled[name] = split.copy()
-        scaled_features = apply_scaler(split[feature_columns], scaler)
-        scaled[name].loc[:, feature_columns] = scaled_features[feature_columns]
+        scaled_features = apply_scaler(split[scale_columns], scaler)
+        scaled[name].loc[:, scale_columns] = scaled_features[scale_columns]
     return scaled, scaler
