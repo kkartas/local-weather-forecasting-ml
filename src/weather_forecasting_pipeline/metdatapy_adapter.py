@@ -101,13 +101,20 @@ def preprocess_with_metdatapy(
     return ws.to_dataframe()
 
 
-def require_metdatapy_feature_features(rolling_windows: Iterable[int]) -> None:
-    """Fail fast for feature engineering that must be added to MetDataPy first."""
+def unavailable_feature_notes(rolling_windows: Iterable[int]) -> list[str]:
+    """Return non-fatal notes for MetDataPy-owned features not yet available."""
+    notes: list[str] = []
     if list(rolling_windows):
-        raise MissingMetDataPyFeature(
-            "Rolling feature generation is required by the dissertation methodology but is not exposed "
-            "by MetDataPy 1.0.0. See METDATAPY.md: Rolling meteorological feature generation."
+        notes.append(
+            "Rolling meteorological feature generation is required by the methodology but is not "
+            "exposed by MetDataPy 1.0.0; the executable pipeline uses the supported MetDataPy "
+            "lag/calendar/derived/QC feature set until MetDataPy adds rolling features."
         )
+    notes.append(
+        "Wind direction cyclic encoding is tracked as a MetDataPy requirement; local code does not "
+        "duplicate it until the official MetDataPy API is available."
+    )
+    return notes
 
 
 def make_supervised_with_metdatapy(
