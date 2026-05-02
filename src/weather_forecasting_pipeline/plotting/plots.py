@@ -4,13 +4,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import matplotlib
-
-matplotlib.use("Agg")
-
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+
+
+def _pyplot():
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    return plt
 
 
 def plot_actual_vs_predicted(
@@ -22,6 +26,7 @@ def plot_actual_vs_predicted(
     max_points: int,
 ) -> None:
     """Save an actual-versus-predicted line plot."""
+    plt = _pyplot()
     output = Path(path)
     output.parent.mkdir(parents=True, exist_ok=True)
     n = min(len(y_true), max_points)
@@ -40,6 +45,7 @@ def plot_actual_vs_predicted(
 
 def plot_residual_distribution(y_true: np.ndarray, y_pred: np.ndarray, path: str | Path, *, title: str) -> None:
     """Save a residual distribution plot."""
+    plt = _pyplot()
     output = Path(path)
     output.parent.mkdir(parents=True, exist_ok=True)
     residuals = np.asarray(y_pred) - np.asarray(y_true)
@@ -56,6 +62,7 @@ def plot_residual_distribution(y_true: np.ndarray, y_pred: np.ndarray, path: str
 
 def plot_metric_comparison(metrics: pd.DataFrame, path: str | Path, metric: str = "mae") -> None:
     """Save a model comparison plot for one metric."""
+    plt = _pyplot()
     output = Path(path)
     output.parent.mkdir(parents=True, exist_ok=True)
     if metrics.empty or metric not in metrics.columns:
@@ -74,6 +81,7 @@ def plot_metric_comparison(metrics: pd.DataFrame, path: str | Path, metric: str 
 
 def plot_error_by_horizon(metrics: pd.DataFrame, path: str | Path, metric: str = "mae") -> None:
     """Save an error-by-horizon plot."""
+    plt = _pyplot()
     output = Path(path)
     output.parent.mkdir(parents=True, exist_ok=True)
     if metrics.empty or metric not in metrics.columns:

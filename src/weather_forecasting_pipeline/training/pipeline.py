@@ -40,12 +40,6 @@ from weather_forecasting_pipeline.models.dl_models import (
     train_dl_model,
 )
 from weather_forecasting_pipeline.models.ml_models import make_ml_model
-from weather_forecasting_pipeline.plotting.plots import (
-    plot_actual_vs_predicted,
-    plot_error_by_horizon,
-    plot_metric_comparison,
-    plot_residual_distribution,
-)
 from weather_forecasting_pipeline.utils.reproducibility import set_random_seed
 
 LOGGER = logging.getLogger(__name__)
@@ -305,26 +299,40 @@ def _write_metrics_and_plots(config: ExperimentConfig, metrics_df: pd.DataFrame)
         json.dump(metrics_df.where(pd.notna(metrics_df), None).to_dict(orient="records"), fh, indent=2)
     _write_markdown_report(config, metrics_df, reports_dir / "summary.md")
 
-    plot_metric_comparison(metrics_df, plots_dir / "model_comparison_mae.png", metric="mae")
-    plot_error_by_horizon(metrics_df, plots_dir / "error_by_horizon_mae.png", metric="mae")
+    try:
+        from weather_forecasting_pipeline.plotting.plots import (
+            plot_actual_vs_predicted,
+            plot_error_by_horizon,
+            plot_metric_comparison,
+            plot_residual_distribution,
+        )
+    except Exception as exc:
+        LOGGER.warning("Plotting is unavailable in this environment; metrics and reports were still written: %s", exc)
+        return
 
-    predictions_dir = config.paths.processed_dir / "predictions"
-    for pred_file in sorted(predictions_dir.glob("predictions_*_*.csv"))[:4]:
-        pred = pd.read_csv(pred_file)
-        stem = pred_file.stem.replace("predictions_", "")
-        plot_actual_vs_predicted(
-            pred["y_true"].to_numpy(),
-            pred["y_pred"].to_numpy(),
-            plots_dir / f"actual_vs_predicted_{stem}.png",
-            title=f"Actual vs predicted: {stem}",
-            max_points=config.evaluation.plot_max_points,
-        )
-        plot_residual_distribution(
-            pred["y_true"].to_numpy(),
-            pred["y_pred"].to_numpy(),
-            plots_dir / f"residuals_{stem}.png",
-            title=f"Residuals: {stem}",
-        )
+    try:
+        plot_metric_comparison(metrics_df, plots_dir / "model_comparison_mae.png", metric="mae")
+        plot_error_by_horizon(metrics_df, plots_dir / "error_by_horizon_mae.png", metric="mae")
+
+        predictions_dir = config.paths.processed_dir / "predictions"
+        for pred_file in sorted(predictions_dir.glob("predictions_*_*.csv"))[:4]:
+            pred = pd.read_csv(pred_file)
+            stem = pred_file.stem.replace("predictions_", "")
+            plot_actual_vs_predicted(
+                pred["y_true"].to_numpy(),
+                pred["y_pred"].to_numpy(),
+                plots_dir / f"actual_vs_predicted_{stem}.png",
+                title=f"Actual vs predicted: {stem}",
+                max_points=config.evaluation.plot_max_points,
+            )
+            plot_residual_distribution(
+                pred["y_true"].to_numpy(),
+                pred["y_pred"].to_numpy(),
+                plots_dir / f"residuals_{stem}.png",
+                title=f"Residuals: {stem}",
+            )
+    except Exception as exc:
+        LOGGER.warning("Plot generation failed; metrics and reports were still written: %s", exc)
 
 
 def _write_markdown_report(config: ExperimentConfig, metrics_df: pd.DataFrame, path: Path) -> None:
