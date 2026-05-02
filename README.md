@@ -125,5 +125,7 @@ pytest
 Run a smoke experiment after adding compatible raw data:
 
 ```powershell
-python -m weather_forecasting_pipeline run-all --config configs/default.yaml
+python -m weather_forecasting_pipeline run-all --config configs/smoke.yaml
 ```
+
+Use `configs/default.yaml` for the full configured methodology once the required MetDataPy Weathercloud and rolling-feature APIs are available.
