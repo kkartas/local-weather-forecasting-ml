@@ -172,5 +172,6 @@ def fit_apply_scaler_with_metdatapy(
     for name, split in splits.items():
         scaled[name] = split.copy()
         scaled_features = apply_scaler(split[scale_columns], scaler)
-        scaled[name].loc[:, scale_columns] = scaled_features[scale_columns]
+        for col in scale_columns:
+            scaled[name][col] = scaled_features[col].astype(float)
     return scaled, scaler
