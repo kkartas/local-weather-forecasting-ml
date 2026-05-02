@@ -1,0 +1,31 @@
+version: 1
+ts:
+  col: Date (Europe/Athens)
+fields:
+  temp_c:
+    col: Temperature (°C)
+    unit: C
+  rh_pct:
+    col: Humidity (%)
+    unit: "%"
+  pres_hpa:
+    col: Pressure (hPa)
+    unit: hpa
+  wspd_ms:
+    col: Wind Speed (km/h)
+    unit: km/h
+  gust_ms:
+    col: Wind Gust (km/h)
+    unit: km/h
+  wdir_deg:
+    col: Wind Direction (°)
+    unit: deg
+  rain_mm:
+    col: Rain (mm)
+    unit: mm
+  solar_wm2:
+    col: Solar Radiation (W/m²)
+    unit: W/m2
+  uv_index:
+    col: UV Index
+    unit: index

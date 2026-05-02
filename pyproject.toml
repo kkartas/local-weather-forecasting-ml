@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "weather-forecasting-pipeline"
+version = "0.1.0"
+description = "MSc dissertation pipeline for local short-term weather forecasting from station observations."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "metdatapy>=1.0.0",
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "pyarrow>=14",
+    "PyYAML>=6.0",
+    "scikit-learn>=1.3",
+    "matplotlib>=3.7",
+    "joblib>=1.3",
+    "torch>=2.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4"]
+
+[project.scripts]
+weather-forecasting-pipeline = "weather_forecasting_pipeline.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"

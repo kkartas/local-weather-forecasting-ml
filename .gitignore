@@ -1,0 +1,35 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local data and generated experiment outputs
+data/raw/*
+data/interim/*
+data/processed/*
+data/external/*
+artifacts/models/*
+artifacts/scalers/*
+artifacts/metrics/*
+artifacts/plots/*
+artifacts/reports/*
+
+# Preserve directory layout
+!data/raw/.gitkeep
+!data/interim/.gitkeep
+!data/processed/.gitkeep
+!data/external/.gitkeep
+!artifacts/models/.gitkeep
+!artifacts/scalers/.gitkeep
+!artifacts/metrics/.gitkeep
+!artifacts/plots/.gitkeep
+!artifacts/reports/.gitkeep
+
+.env
+.DS_Store
+Thumbs.db
