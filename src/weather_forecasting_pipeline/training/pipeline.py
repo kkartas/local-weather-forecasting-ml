@@ -31,7 +31,6 @@ from weather_forecasting_pipeline.metdatapy_adapter import (
     preprocess_with_metdatapy,
     save_interim,
     split_by_fraction_with_metdatapy,
-    unavailable_feature_notes,
 )
 from weather_forecasting_pipeline.models.baselines import make_baseline
 from weather_forecasting_pipeline.models.dl_models import (
@@ -71,13 +70,11 @@ def preprocess(config: ExperimentConfig) -> Path:
     if not source.exists():
         raise FileNotFoundError(f"Canonical input not found: {source}. Run ingest first.")
     df = load_interim(source)
-    notes = unavailable_feature_notes(config.data.rolling_windows)
-    for note in notes:
-        LOGGER.warning(note)
     prepared = preprocess_with_metdatapy(
         df,
         expected_frequency=config.data.expected_frequency,
         derived_metrics=config.data.derived_metrics,
+        rolling_windows=config.data.rolling_windows,
         resample_rule=config.data.resample_rule,
     )
     output = prepared_path(config)
@@ -367,7 +364,7 @@ def _write_markdown_report(config: ExperimentConfig, metrics_df: pd.DataFrame, p
             "## MetDataPy Notes",
             "",
             "The executable pipeline uses the preparation functionality exposed by the installed MetDataPy version. "
-            "Missing Weathercloud and rolling/wind-direction feature APIs are tracked in `METDATAPY.md`.",
+            "Remaining MetDataPy requirements are tracked in `METDATAPY.md`.",
         ]
     )
     path.write_text("\n".join(lines), encoding="utf-8")

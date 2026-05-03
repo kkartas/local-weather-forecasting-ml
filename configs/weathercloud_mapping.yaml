@@ -24,6 +24,9 @@ fields:
   rain_mm:
     col: Rain (mm)
     unit: mm
+  rain_rate_mmh:
+    col: Rain Rate (mm/h)
+    unit: mm/h
   solar_wm2:
     col: Solar Radiation (W/m²)
     unit: W/m2

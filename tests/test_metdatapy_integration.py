@@ -13,7 +13,7 @@ def test_metdatapy_imports():
     assert hasattr(metdatapy, "make_supervised")
 
 
-def test_weathercloud_single_csv_ingestion_through_metdatapy(weathercloud_csv):
+def test_weathercloud_directory_semicolon_ingestion_through_metdatapy(weathercloud_csv):
     raw_dir, mapping_path = weathercloud_csv
     df = ingest_raw_weathercloud(raw_dir, mapping_path, timezone="Europe/Athens")
 
@@ -21,7 +21,8 @@ def test_weathercloud_single_csv_ingestion_through_metdatapy(weathercloud_csv):
     assert str(df.index.tz) == "UTC"
     assert df.index.is_monotonic_increasing
     assert not df.index.has_duplicates
-    assert {"temp_c", "rh_pct", "pres_hpa", "wspd_ms", "gust_ms", "wdir_deg"}.issubset(df.columns)
+    assert {"temp_c", "rh_pct", "pres_hpa", "wspd_ms", "gust_ms", "wdir_deg", "rain_rate_mmh"}.issubset(df.columns)
+    assert len(df) == 4
     assert df["wspd_ms"].iloc[0] == 1.0
     assert df.index[0] == pd.Timestamp("2023-12-31 22:00:00", tz="UTC")
 
@@ -45,10 +46,12 @@ def test_preprocess_adds_gap_qc_and_calendar_features(synthetic_station_frame):
         synthetic_station_frame.drop(synthetic_station_frame.index[5]),
         expected_frequency="10min",
         derived_metrics=["dew_point", "vpd", "heat_index", "wind_chill"],
+        rolling_windows=[6],
     )
 
     assert "gap" in prepared.columns
     assert bool(prepared["gap"].iloc[5])
     assert "qc_any" in prepared.columns
     assert {"hour_sin", "hour_cos", "doy_sin", "doy_cos"}.issubset(prepared.columns)
+    assert {"wdir_sin", "wdir_cos", "temp_c_roll6_mean", "wdir_sin_roll6_mean"}.issubset(prepared.columns)
     assert {"dew_point_c", "vpd_kpa", "heat_index_c", "wind_chill_c"}.issubset(prepared.columns)

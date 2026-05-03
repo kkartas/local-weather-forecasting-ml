@@ -62,7 +62,7 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-MetDataPy must be installed and importable. The pipeline expects MetDataPy 1.1.0 or later.
+MetDataPy must be installed and importable. The pipeline expects MetDataPy 1.2.0 or later.
 
 ## Configuration
 
@@ -100,9 +100,9 @@ Processed data and split metadata are written under `data/processed/`.
 
 ## Current Limitations
 
-MetDataPy 1.1.0 does not yet expose every Weathercloud-specific preparation API required by the full dissertation methodology. It now covers encoding-detecting CSV reads and timezone-aware source mapping, but robust multi-file Weathercloud directory ingestion, semicolon delimiter handling, rolling features, wind-direction cyclic encoding, and `rain_rate_mmh` still need MetDataPy support before full final experiments. See [METDATAPY.md](METDATAPY.md).
+MetDataPy 1.2.0 covers Weathercloud directory ingestion, delimiter and encoding handling, timezone-aware source mapping, `rain_rate_mmh`, wind-direction cyclic encoding, and rolling features. Remaining MetDataPy requirements are documented in [METDATAPY.md](METDATAPY.md).
 
-The repository intentionally fails clearly when a required MetDataPy-owned capability is missing instead of silently reimplementing it locally. MetDataPy 1.1.0 is used for encoding-detecting CSV reads and timezone-aware mapping via `ts.timezone`.
+The repository intentionally fails clearly when a required MetDataPy-owned capability is missing instead of silently reimplementing it locally. MetDataPy 1.2.0 is used for Weathercloud ingestion and reusable meteorological feature preparation.
 
 ## Updating MetDataPy
 
@@ -128,4 +128,4 @@ Run a smoke experiment after adding compatible raw data:
 python -m weather_forecasting_pipeline run-all --config configs/smoke.yaml
 ```
 
-Use `configs/default.yaml` for the full configured methodology once the required MetDataPy Weathercloud and rolling-feature APIs are available.
+Use `configs/default.yaml` for the full configured methodology.

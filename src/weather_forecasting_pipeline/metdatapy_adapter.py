@@ -15,17 +15,28 @@ from typing import Iterable
 
 import pandas as pd
 from metdatapy import WeatherSet
-from metdatapy.io import read_csv, read_parquet, to_parquet
+from metdatapy.io import read_parquet, to_parquet
 from metdatapy.mapper import Mapper
 from metdatapy.mlprep import apply_scaler, fit_scaler, make_supervised
 from metdatapy.mlprep import time_split as metdatapy_time_split
 from metdatapy.qc import qc_any
+from metdatapy.weathercloud import read_weathercloud_directory
 
 LOGGER = logging.getLogger(__name__)
 
-
-class MissingMetDataPyFeature(RuntimeError):
-    """Raised when a required MetDataPy-owned feature is unavailable."""
+ROLLING_FEATURE_COLUMNS = [
+    "temp_c",
+    "rh_pct",
+    "pres_hpa",
+    "wspd_ms",
+    "gust_ms",
+    "rain_mm",
+    "rain_rate_mmh",
+    "solar_wm2",
+    "uv_index",
+    "wdir_sin",
+    "wdir_cos",
+]
 
 
 def load_mapping(path: str | Path) -> dict:
@@ -36,35 +47,19 @@ def load_mapping(path: str | Path) -> dict:
 def ingest_raw_weathercloud(raw_dir: str | Path, mapping_path: str | Path, timezone: str) -> pd.DataFrame:
     """Load raw Weathercloud data through available MetDataPy APIs.
 
-    MetDataPy 1.1.0 supports encoding-detecting CSV reads and timezone-aware
-    source-to-canonical mapping through ``ts.timezone``. Directory-level
-    Weathercloud ingestion and delimiter auto-detection are still tracked in
-    ``METDATAPY.md`` and are not duplicated here.
+    MetDataPy 1.2.0 owns Weathercloud directory ingestion, delimiter/encoding
+    handling, source-to-canonical mapping, timezone conversion, and unit
+    normalization.
     """
-    raw_path = Path(raw_dir)
-    files = sorted(raw_path.glob("*.csv"))
-    if not files:
-        raise FileNotFoundError(f"No CSV files found in {raw_path}")
-    if len(files) > 1:
-        raise MissingMetDataPyFeature(
-            "MetDataPy directory-level Weathercloud ingestion is required for multiple CSV files. "
-            "See METDATAPY.md: Weathercloud multi-file ingestion."
-        )
-
     mapping = _mapping_with_timezone(load_mapping(mapping_path), timezone)
-    ts_col = mapping.get("ts", {}).get("col")
-    if not ts_col:
-        raise ValueError("Mapping config must define ts.col")
-
-    LOGGER.info("Reading single raw CSV through MetDataPy: %s", files[0])
-    raw_df = read_csv(str(files[0]))
-    weather_set = WeatherSet.from_mapping(raw_df, mapping).normalize_units(mapping)
-
-    if ts_col not in raw_df.columns:
-        raise ValueError(f"Timestamp column {ts_col!r} not present in raw data")
-    weather_set.df = weather_set.df.sort_index()
-    weather_set.df = weather_set.df[~weather_set.df.index.duplicated(keep="first")]
-    return weather_set.to_dataframe()
+    LOGGER.info("Reading Weathercloud directory through MetDataPy: %s", raw_dir)
+    df = read_weathercloud_directory(raw_dir, mapping_config=mapping, timezone=timezone)
+    df = df.sort_index()
+    duplicate_count = int(df.index.duplicated(keep="first").sum())
+    if duplicate_count:
+        LOGGER.warning("Dropping %s duplicate timestamp rows after MetDataPy ingestion", duplicate_count)
+        df = df[~df.index.duplicated(keep="first")]
+    return df
 
 
 def save_interim(df: pd.DataFrame, path: str | Path) -> None:
@@ -82,6 +77,7 @@ def preprocess_with_metdatapy(
     df: pd.DataFrame,
     expected_frequency: str,
     derived_metrics: Iterable[str],
+    rolling_windows: Iterable[int],
     resample_rule: str | None = None,
 ) -> pd.DataFrame:
     """Run supported non-destructive MetDataPy preprocessing steps."""
@@ -92,25 +88,16 @@ def preprocess_with_metdatapy(
     ws.qc_consistency()
     ws.df = qc_any(ws.df)
     ws.calendar_features(cyclical=True)
+    ws.encode_wind_direction(drop_original=False)
+    ws.rolling_features(
+        columns=[col for col in ROLLING_FEATURE_COLUMNS if col in ws.df.columns],
+        windows=[int(window) for window in rolling_windows],
+        stats=("mean", "std", "min", "max"),
+        closed="left",
+    )
     if resample_rule:
         ws.resample(resample_rule)
     return ws.to_dataframe()
-
-
-def unavailable_feature_notes(rolling_windows: Iterable[int]) -> list[str]:
-    """Return non-fatal notes for MetDataPy-owned features not yet available."""
-    notes: list[str] = []
-    if list(rolling_windows):
-        notes.append(
-            "Rolling meteorological feature generation is required by the methodology but is not "
-            "exposed by MetDataPy 1.1.0; the executable pipeline uses the supported MetDataPy "
-            "lag/calendar/derived/QC feature set until MetDataPy adds rolling features."
-        )
-    notes.append(
-        "Wind direction cyclic encoding is tracked as a MetDataPy requirement; local code does not "
-        "duplicate it until the official MetDataPy API is available."
-    )
-    return notes
 
 
 def _mapping_with_timezone(mapping: dict, timezone: str) -> dict:
