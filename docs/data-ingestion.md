@@ -69,6 +69,12 @@ After MetDataPy ingestion, the adapter sorts by timestamp and checks for duplica
 
 This keeps the modeling index unique. A future MetDataPy duplicate-policy API is tracked in `METDATAPY.md`.
 
+## Yearly CSV Files
+
+Yearly Weathercloud exports are supported as separate CSV files in `data/raw/`. MetDataPy 1.2.0 reads all CSV files in the directory, concatenates them, and sorts the canonical output chronologically.
+
+Before final experiments, verify ingestion on the full yearly set. Full-year local `Europe/Athens` timestamps may include daylight-saving transition hours; DST-safe timestamp handling is tracked in `METDATAPY.md`.
+
 ## No Raw Data Mutation
 
 Raw CSV exports under `data/raw/` are read but not modified.

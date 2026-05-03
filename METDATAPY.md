@@ -48,6 +48,27 @@ Current installed version inspected: `metdatapy==1.2.0`.
 - Dissertation update required:
   No.
 
+### 2026-05-03 - DST-safe local timestamp normalization
+
+- Required feature:
+  Support deterministic localization of naive local station timestamps across daylight-saving transitions.
+- Reason:
+  Full-year Weathercloud exports for `Europe/Athens` can include timestamps around DST transition days. Current MetDataPy 1.2.0 timestamp normalization raises on nonexistent local timestamps such as `2024-03-31 03:00` in `Europe/Athens`. DST-safe timezone normalization is reusable meteorological ingestion logic and belongs in MetDataPy.
+- Expected input:
+  Weathercloud CSV exports with a naive local timestamp column and `timezone="Europe/Athens"`.
+- Expected output:
+  UTC `ts_utc` index with a documented policy for nonexistent and ambiguous local times.
+- Suggested API:
+  `read_weathercloud_directory(..., nonexistent="shift_forward", ambiguous="infer")` and equivalent options in `ensure_datetime_utc`.
+- Priority:
+  High
+- Blocking status:
+  May block full-year Weathercloud ingestion if rows exist during DST transition hours.
+- Forecasting pipeline usage:
+  Required by `weather_forecasting_pipeline.metdatapy_adapter.ingest_raw_weathercloud` for yearly CSV exports.
+- Dissertation update required:
+  No if implemented in MetDataPy before final experiments; yes if final experiments exclude or manually adjust DST-transition rows.
+
 ## Resolved In MetDataPy 1.2.0
 
 ### 2026-05-03 - Weathercloud multi-file ingestion
