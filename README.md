@@ -1,53 +1,47 @@
-# Local Short-Term Weather Forecasting Pipeline
+# Local Weather Forecasting ML Pipeline
 
-This repository contains the practical software component for the MSc dissertation:
+Python pipeline for short-term local weather forecasting from a single Weathercloud station export. The project builds reproducible machine-learning experiments for an MSc dissertation on observation-only, station-level forecasting.
 
-**Τοπική βραχυπρόθεσμη πρόγνωση καιρού από μετρήσεις μετεωρολογικού σταθμού με μηχανική μάθηση και νευρωνικά δίκτυα**
+The pipeline ingests raw 10-minute Weathercloud CSV files, prepares canonical meteorological time-series data, creates supervised forecast datasets, trains baseline/ML/deep-learning models, evaluates them by horizon, and saves experiment artifacts.
 
-The project evaluates whether observation-only measurements from a single local weather station can support useful short-term local forecasting. It compares persistence and moving-average baselines, traditional machine learning models, and neural networks across configurable forecast horizons.
+## Scope
 
-## Scientific Scope
+- Uses only historical weather-station observations.
+- Does not use NWP model outputs or external forecast products.
+- Uses chronological train/validation/test splits.
+- Fits scalers on the training split only.
+- Trains each model independently for each configured forecast horizon.
 
-- Inputs are historical local station observations only.
-- Numerical Weather Prediction outputs and external forecast products are not allowed as model inputs.
-- Splits are chronological and never shuffled.
-- Scalers are fit only on the training split.
-- Evaluation is performed on the test split after training and validation.
+## Features
 
-## MetDataPy Role
+- Weathercloud CSV ingestion from `data/raw/`
+- canonical schema and unit normalization through MetDataPy
+- timezone conversion to UTC
+- quality-control flags and gap insertion
+- derived meteorological features
+- cyclic time and wind-direction features
+- lag, rolling, and forecast-horizon features
+- baseline models: persistence, moving average
+- scikit-learn models: linear regression, random forest, gradient boosting, SVR
+- PyTorch models: LSTM, GRU, TCN
+- MAE, RMSE, and safe MAPE evaluation
+- CSV, JSON, Markdown, plot, model, and scaler artifacts
 
-MetDataPy is the mandatory data preparation layer for this dissertation. This repository orchestrates experiments, models, artifacts, plots, and reports. It must not duplicate reusable meteorological preparation logic that belongs in MetDataPy.
-
-MetDataPy is used for supported functionality including:
-
-- source-to-canonical mapping
-- unit normalization
-- timestamp normalization
-- gap insertion
-- QC flagging
-- derived meteorological variables
-- calendar features
-- supervised lag and horizon table creation
-- time-safe split utilities
-- scaler fit/apply utilities
-
-Missing MetDataPy functionality required by the methodology is tracked in [METDATAPY.md](METDATAPY.md). Methodological deviations are tracked in [CHANGES.md](CHANGES.md).
-
-## Repository Layout
+## Project Layout
 
 ```text
-configs/                         Experiment and mapping configuration
-data/raw/                        Raw Weathercloud CSV exports
-data/interim/                    Canonical MetDataPy outputs
-data/processed/                  ML-ready datasets and split metadata
-artifacts/models/                Trained models
-artifacts/scalers/               Fitted scalers
-artifacts/metrics/               CSV and JSON metrics
-artifacts/plots/                 Evaluation plots
-artifacts/reports/               Markdown experiment reports
-src/weather_forecasting_pipeline/ Forecasting orchestration package
-tests/                           Pytest test suite
-scripts/                         Convenience experiment scripts
+configs/                          Experiment and source-column mapping files
+data/raw/                         Raw Weathercloud CSV exports
+data/interim/                     Canonical and prepared parquet datasets
+data/processed/                   Supervised datasets, split metadata, predictions
+artifacts/models/                 Trained model artifacts
+artifacts/scalers/                Fitted scaler artifacts
+artifacts/metrics/                Metrics CSV and JSON
+artifacts/plots/                  Evaluation plots
+artifacts/reports/                Markdown experiment summaries
+src/weather_forecasting_pipeline/ Python package
+tests/                            Pytest suite
+scripts/                          Convenience scripts
 ```
 
 ## Installation
@@ -62,70 +56,103 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-MetDataPy must be installed and importable. The pipeline expects MetDataPy 1.2.0 or later.
+The project requires `metdatapy>=1.2.0` for Weathercloud ingestion and meteorological time-series preparation.
+
+## Data
+
+Place one or more Weathercloud CSV exports in:
+
+```text
+data/raw/
+```
+
+The default mapping expects a timestamp column named:
+
+```text
+Date (Europe/Athens)
+```
+
+Column mapping and units are configured in:
+
+```text
+configs/weathercloud_mapping.yaml
+```
+
+Update that file if the exported Weathercloud column names differ.
 
 ## Configuration
 
-The default experiment configuration is [configs/default.yaml](configs/default.yaml). Weathercloud source column mapping is configured in [configs/weathercloud_mapping.yaml](configs/weathercloud_mapping.yaml).
+Main experiment configuration:
 
-Place raw Weathercloud CSV exports under `data/raw/`. The dissertation methodology expects Weathercloud exports with 10-minute observations and a local timestamp column such as `Date (Europe/Athens)`.
+```text
+configs/default.yaml
+```
 
-## Commands
+Smoke-test configuration:
+
+```text
+configs/smoke.yaml
+```
+
+The configuration controls paths, target variable, forecast horizons, lags, rolling windows, sequence length, models, split fractions, scaling, and training parameters.
+
+## Usage
+
+Run the full pipeline:
+
+```powershell
+python -m weather_forecasting_pipeline run-all --config configs/default.yaml
+```
+
+Run individual stages:
 
 ```powershell
 python -m weather_forecasting_pipeline ingest --config configs/default.yaml
 python -m weather_forecasting_pipeline preprocess --config configs/default.yaml
 python -m weather_forecasting_pipeline train --config configs/default.yaml
 python -m weather_forecasting_pipeline evaluate --config configs/default.yaml
-python -m weather_forecasting_pipeline run-all --config configs/default.yaml
 ```
 
-A convenience wrapper is also available:
-
-```powershell
-python scripts/run_experiment.py --config configs/default.yaml
-```
-
-## Artifacts
-
-Pipeline outputs are written under `artifacts/`:
-
-- models in `artifacts/models/`
-- scalers in `artifacts/scalers/`
-- metrics CSV/JSON in `artifacts/metrics/`
-- plots in `artifacts/plots/`
-- dissertation-oriented Markdown report in `artifacts/reports/`
-
-Processed data and split metadata are written under `data/processed/`.
-
-## Current Limitations
-
-MetDataPy 1.2.0 covers Weathercloud directory ingestion, delimiter and encoding handling, timezone-aware source mapping, `rain_rate_mmh`, wind-direction cyclic encoding, and rolling features. Remaining MetDataPy requirements are documented in [METDATAPY.md](METDATAPY.md).
-
-The repository intentionally fails clearly when a required MetDataPy-owned capability is missing instead of silently reimplementing it locally. MetDataPy 1.2.0 is used for Weathercloud ingestion and reusable meteorological feature preparation.
-
-## Updating MetDataPy
-
-When a missing preparation feature is discovered:
-
-1. Add an entry to `METDATAPY.md`.
-2. Implement or update the feature in the MetDataPy library.
-3. Install the updated MetDataPy version.
-4. Consume the new API from `weather_forecasting_pipeline.metdatapy_adapter`.
-5. Add or update integration tests.
-
-## Reproducibility
-
-Run the tests with:
-
-```powershell
-pytest
-```
-
-Run a smoke experiment after adding compatible raw data:
+Run the smaller smoke configuration:
 
 ```powershell
 python -m weather_forecasting_pipeline run-all --config configs/smoke.yaml
 ```
 
-Use `configs/default.yaml` for the full configured methodology.
+Convenience wrapper:
+
+```powershell
+python scripts/run_experiment.py --config configs/default.yaml
+```
+
+## Outputs
+
+Generated outputs are written to:
+
+```text
+data/interim/canonical.parquet
+data/interim/prepared.parquet
+data/processed/supervised_<horizon>.parquet
+data/processed/split_metadata_<horizon>.json
+data/processed/predictions/
+artifacts/models/
+artifacts/scalers/
+artifacts/metrics/metrics.csv
+artifacts/metrics/metrics.json
+artifacts/plots/
+artifacts/reports/summary.md
+```
+
+## Testing
+
+```powershell
+python -m pytest
+```
+
+The tests cover MetDataPy integration, Weathercloud ingestion, timezone conversion, supervised target shifting, chronological splits, scaler fitting, metrics, and model smoke paths.
+
+## Notes
+
+Methodology changes are recorded in `CHANGES.md`.
+
+Remaining or future MetDataPy requirements are tracked in `METDATAPY.md`.
