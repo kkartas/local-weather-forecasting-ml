@@ -61,9 +61,15 @@ Never reimplement MetDataPy responsibilities locally. If a required feature is m
 ## Documentation Rules
 
 - Update `README.md` when commands, configuration, or artifact locations change.
+- Update the detailed documentation under `docs/` for every codebase addition or behavior change that affects users, experiments, configuration, data flow, models, metrics, artifacts, or development workflow.
+- Keep the GitHub Pages documentation synchronized with the code in the same commit as the code change whenever practical.
+- Update `docs/configuration.md` when configuration keys, defaults, or expected values change.
+- Update `docs/pipeline-overview.md`, `docs/data-ingestion.md`, `docs/preprocessing-features.md`, `docs/datasets-splits.md`, `docs/training.md`, `docs/evaluation-reporting.md`, or `docs/artifacts.md` when the corresponding pipeline stage changes.
+- Update `docs/development.md` when testing, contribution workflow, package structure, or GitHub Pages setup changes.
 - Update `METDATAPY.md` for missing MetDataPy functionality.
 - Update `CHANGES.md` for methodology, experiment design, or assumption changes.
 - Do not use `CHANGES.md` for ordinary implementation notes.
+- Do not leave documentation stale after code changes. If documentation does not need updating, say why in the final response or commit context.
 
 ## Coding Style
 

@@ -1,0 +1,9 @@
+title: Local Weather Forecasting ML Pipeline
+description: Documentation for the local station short-term weather forecasting experiment pipeline.
+theme: jekyll-theme-minimal
+
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default

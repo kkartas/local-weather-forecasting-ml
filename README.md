@@ -151,6 +151,10 @@ python -m pytest
 
 The tests cover MetDataPy integration, Weathercloud ingestion, timezone conversion, supervised target shifting, chronological splits, scaler fitting, metrics, and model smoke paths.
 
+## Documentation
+
+Detailed documentation is available in `docs/`. The `docs/` directory is ready to be published with GitHub Pages by selecting the default branch and `/docs` as the Pages source.
+
 ## Notes
 
 Methodology changes are recorded in `CHANGES.md`.
