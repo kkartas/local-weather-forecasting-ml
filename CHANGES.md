@@ -9,7 +9,7 @@ Use this file only for changes affecting methodology, experimental design, or sc
 - Affected component:
   Feature engineering and raw Weathercloud ingestion.
 - What changed:
-  The executable pipeline uses only data-preparation functionality currently exposed by MetDataPy 1.0.0. Rolling meteorological features and wind-direction cyclic encoding are not locally reimplemented. Robust Weathercloud multi-file, delimiter, and encoding handling are also deferred to MetDataPy.
+  The executable pipeline uses only data-preparation functionality currently exposed by MetDataPy. After updating to MetDataPy 1.1.0, timezone-aware source mapping and encoding-detecting CSV reads are used directly. Rolling meteorological features, wind-direction cyclic encoding, Weathercloud multi-file ingestion, and delimiter handling are not locally reimplemented.
 - Why it changed:
   The dissertation requires MetDataPy to be the authoritative data preparation layer. Reimplementing missing reusable meteorological preparation logic inside this forecasting repository would violate the project architecture.
 - Methodology impact:

@@ -1,8 +1,12 @@
 # MetDataPy Feature Requirements
 
-This file tracks MetDataPy features required by the dissertation forecasting project that are missing or incomplete in the currently installed MetDataPy library.
+This file tracks MetDataPy features required by the dissertation forecasting project that are missing, incomplete, or recently resolved in the currently installed MetDataPy library.
 
-## 2026-05-02 - Weathercloud multi-file ingestion
+Current installed version inspected: `metdatapy==1.1.0`.
+
+## Active Missing Or Incomplete Features
+
+### 2026-05-03 - Weathercloud multi-file ingestion
 
 - Required feature:
   Support loading and concatenating multiple Weathercloud CSV exports from a directory.
@@ -23,49 +27,28 @@ This file tracks MetDataPy features required by the dissertation forecasting pro
 - Dissertation update required:
   No, if implemented in MetDataPy as planned.
 
-## 2026-05-02 - Weathercloud delimiter and encoding support
+### 2026-05-03 - Weathercloud delimiter support
 
 - Required feature:
-  Robust Weathercloud CSV reading with support for semicolon delimiters and encodings including UTF-8, UTF-8 with BOM, UTF-16, UTF-16 LE, and related real export formats.
+  Robust Weathercloud CSV reading with support for semicolon-delimited exports, preferably by explicit delimiter configuration or delimiter detection.
 - Reason:
   Source-specific ingestion robustness belongs in MetDataPy as part of the official data preparation layer.
 - Expected input:
-  Weathercloud CSV path with configurable or auto-detected delimiter and encoding.
+  Weathercloud CSV path with configurable or auto-detected delimiter.
 - Expected output:
   Raw dataframe preserving rows and source columns for canonical mapping.
 - Suggested API:
-  `metdatapy.read_weathercloud_csv(path, mapping_config=None, timezone="Europe/Athens", encoding=None, delimiter=None)`
+  `metdatapy.read_weathercloud_csv(path, mapping_config=None, timezone="Europe/Athens", delimiter=None)`
 - Priority:
   High
 - Blocking status:
-  Blocks reliable ingestion of real Weathercloud exports.
+  Blocks reliable ingestion of real semicolon-separated Weathercloud exports.
 - Forecasting pipeline usage:
   Required by `weather_forecasting_pipeline.metdatapy_adapter.ingest_raw_weathercloud`.
 - Dissertation update required:
   No, if implemented in MetDataPy as planned.
 
-## 2026-05-02 - Local timezone-aware Weathercloud timestamp normalization
-
-- Required feature:
-  Source ingestion should parse a local timestamp column such as `Date (Europe/Athens)`, localize it to `Europe/Athens`, and convert it to UTC.
-- Reason:
-  Timestamp normalization is reusable meteorological time-series preparation and is already conceptually part of MetDataPy.
-- Expected input:
-  Raw dataframe or CSV with local Weathercloud timestamp column and timezone configuration.
-- Expected output:
-  `ts_utc` datetime index in UTC without silently treating local timestamps as UTC.
-- Suggested API:
-  `WeatherSet.from_csv(path, mapping, timezone="Europe/Athens")` or `read_weathercloud_csv(..., timezone="Europe/Athens")`
-- Priority:
-  High
-- Blocking status:
-  Blocks correct local-to-UTC conversion for Weathercloud exports with naive local timestamps.
-- Forecasting pipeline usage:
-  Required during ingestion and canonicalization.
-- Dissertation update required:
-  No, if implemented in MetDataPy as planned.
-
-## 2026-05-02 - Complete canonical Weathercloud schema support
+### 2026-05-03 - Complete canonical Weathercloud schema support
 
 - Required feature:
   Include `rain_rate_mmh` in canonical schema mapping, unit normalization, QC bounds, and artifact metadata.
@@ -86,7 +69,7 @@ This file tracks MetDataPy features required by the dissertation forecasting pro
 - Dissertation update required:
   No, if implemented in MetDataPy as planned.
 
-## 2026-05-02 - Wind direction cyclic encoding
+### 2026-05-03 - Wind direction cyclic encoding
 
 - Required feature:
   Convert `wdir_deg` into `wdir_sin` and `wdir_cos` before modeling and rolling statistics.
@@ -107,7 +90,7 @@ This file tracks MetDataPy features required by the dissertation forecasting pro
 - Dissertation update required:
   No, if implemented in MetDataPy as planned.
 
-## 2026-05-02 - Rolling meteorological feature generation
+### 2026-05-03 - Rolling meteorological feature generation
 
 - Required feature:
   Generate past-only rolling mean, standard deviation, minimum, and maximum for configured variables and windows.
@@ -127,3 +110,31 @@ This file tracks MetDataPy features required by the dissertation forecasting pro
   Required before supervised dataset creation.
 - Dissertation update required:
   No, if implemented in MetDataPy as planned.
+
+## Resolved In MetDataPy 1.1.0
+
+### 2026-05-03 - Encoding-detecting generic CSV ingestion
+
+- Required feature:
+  Read common real-world CSV encodings used by Weathercloud exports.
+- Resolution:
+  MetDataPy 1.1.0 `metdatapy.io.read_csv(path, ts_col=None, nrows=None)` detects common encodings before calling pandas.
+- Forecasting pipeline usage:
+  `weather_forecasting_pipeline.metdatapy_adapter.ingest_raw_weathercloud` continues to call MetDataPy `read_csv`.
+- Remaining gap:
+  Delimiter support is still incomplete and is tracked separately above.
+- Dissertation update required:
+  No.
+
+### 2026-05-03 - Local timezone-aware source mapping
+
+- Required feature:
+  Source ingestion should parse a local timestamp column such as `Date (Europe/Athens)`, localize it to `Europe/Athens`, and convert it to UTC.
+- Resolution:
+  MetDataPy 1.1.0 `WeatherSet.from_mapping` reads `ts.timezone` from the mapping and delegates timestamp normalization to MetDataPy.
+- Forecasting pipeline usage:
+  `configs/weathercloud_mapping.yaml` now declares `ts.timezone: Europe/Athens`, and the adapter no longer manually overrides the canonical index.
+- Remaining gap:
+  None for single-file timestamp normalization.
+- Dissertation update required:
+  No.

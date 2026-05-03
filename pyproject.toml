@@ -9,7 +9,7 @@ description = "MSc dissertation pipeline for local short-term weather forecastin
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "metdatapy>=1.0.0",
+    "metdatapy>=1.1.0",
     "numpy>=1.24,<2",
     "pandas>=2.0",
     "pyarrow>=14",

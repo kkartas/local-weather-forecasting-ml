@@ -1,6 +1,7 @@
 version: 1
 ts:
   col: Date (Europe/Athens)
+  timezone: Europe/Athens
 fields:
   temp_c:
     col: Temperature (°C)

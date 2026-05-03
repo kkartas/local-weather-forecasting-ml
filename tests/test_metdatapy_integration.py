@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pandas as pd
+from metdatapy import WeatherSet
 
 from weather_forecasting_pipeline.metdatapy_adapter import ingest_raw_weathercloud, preprocess_with_metdatapy
 
@@ -23,6 +24,20 @@ def test_weathercloud_single_csv_ingestion_through_metdatapy(weathercloud_csv):
     assert {"temp_c", "rh_pct", "pres_hpa", "wspd_ms", "gust_ms", "wdir_deg"}.issubset(df.columns)
     assert df["wspd_ms"].iloc[0] == 1.0
     assert df.index[0] == pd.Timestamp("2023-12-31 22:00:00", tz="UTC")
+
+
+def test_metdatapy_mapping_timezone_normalizes_local_time():
+    raw = pd.DataFrame({"Date (Europe/Athens)": ["2024-01-01 00:00"], "Temperature (°C)": [10.0]})
+    mapping = {
+        "version": 1,
+        "ts": {"col": "Date (Europe/Athens)", "timezone": "Europe/Athens"},
+        "fields": {"temp_c": {"col": "Temperature (°C)", "unit": "C"}},
+    }
+
+    df = WeatherSet.from_mapping(raw, mapping).normalize_units(mapping).to_dataframe()
+
+    assert df.index[0] == pd.Timestamp("2023-12-31 22:00:00", tz="UTC")
+    assert df["temp_c"].iloc[0] == 10.0
 
 
 def test_preprocess_adds_gap_qc_and_calendar_features(synthetic_station_frame):

@@ -62,7 +62,7 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-MetDataPy must be installed and importable. The pipeline expects MetDataPy 1.0.0 or later.
+MetDataPy must be installed and importable. The pipeline expects MetDataPy 1.1.0 or later.
 
 ## Configuration
 
@@ -100,9 +100,9 @@ Processed data and split metadata are written under `data/processed/`.
 
 ## Current Limitations
 
-MetDataPy 1.0.0 does not yet expose every Weathercloud-specific preparation API required by the full dissertation methodology. In particular, robust multi-file Weathercloud directory ingestion with semicolon delimiter and encoding detection must be added to MetDataPy before full raw Weathercloud exports can be ingested through the approved path. See [METDATAPY.md](METDATAPY.md).
+MetDataPy 1.1.0 does not yet expose every Weathercloud-specific preparation API required by the full dissertation methodology. It now covers encoding-detecting CSV reads and timezone-aware source mapping, but robust multi-file Weathercloud directory ingestion, semicolon delimiter handling, rolling features, wind-direction cyclic encoding, and `rain_rate_mmh` still need MetDataPy support before full final experiments. See [METDATAPY.md](METDATAPY.md).
 
-The repository intentionally fails clearly when a required MetDataPy-owned capability is missing instead of silently reimplementing it locally.
+The repository intentionally fails clearly when a required MetDataPy-owned capability is missing instead of silently reimplementing it locally. MetDataPy 1.1.0 is used for encoding-detecting CSV reads and timezone-aware mapping via `ts.timezone`.
 
 ## Updating MetDataPy
 

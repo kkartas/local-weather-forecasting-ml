@@ -20,7 +20,6 @@ from metdatapy.mapper import Mapper
 from metdatapy.mlprep import apply_scaler, fit_scaler, make_supervised
 from metdatapy.mlprep import time_split as metdatapy_time_split
 from metdatapy.qc import qc_any
-from metdatapy.utils import ensure_datetime_utc
 
 LOGGER = logging.getLogger(__name__)
 
@@ -37,10 +36,10 @@ def load_mapping(path: str | Path) -> dict:
 def ingest_raw_weathercloud(raw_dir: str | Path, mapping_path: str | Path, timezone: str) -> pd.DataFrame:
     """Load raw Weathercloud data through available MetDataPy APIs.
 
-    The installed MetDataPy 1.0.0 exposes a generic CSV reader and WeatherSet
-    mapping utilities but not robust Weathercloud directory ingestion. This
-    adapter supports the non-duplicative single-file path through MetDataPy and
-    fails clearly for multi-file ingestion until MetDataPy provides that API.
+    MetDataPy 1.1.0 supports encoding-detecting CSV reads and timezone-aware
+    source-to-canonical mapping through ``ts.timezone``. Directory-level
+    Weathercloud ingestion and delimiter auto-detection are still tracked in
+    ``METDATAPY.md`` and are not duplicated here.
     """
     raw_path = Path(raw_dir)
     files = sorted(raw_path.glob("*.csv"))
@@ -52,7 +51,7 @@ def ingest_raw_weathercloud(raw_dir: str | Path, mapping_path: str | Path, timez
             "See METDATAPY.md: Weathercloud multi-file ingestion."
         )
 
-    mapping = load_mapping(mapping_path)
+    mapping = _mapping_with_timezone(load_mapping(mapping_path), timezone)
     ts_col = mapping.get("ts", {}).get("col")
     if not ts_col:
         raise ValueError("Mapping config must define ts.col")
@@ -61,12 +60,8 @@ def ingest_raw_weathercloud(raw_dir: str | Path, mapping_path: str | Path, timez
     raw_df = read_csv(str(files[0]))
     weather_set = WeatherSet.from_mapping(raw_df, mapping).normalize_units(mapping)
 
-    # Timestamp localization is still performed by MetDataPy's own helper. The
-    # adapter only supplies the dissertation-specific local timezone setting.
     if ts_col not in raw_df.columns:
         raise ValueError(f"Timestamp column {ts_col!r} not present in raw data")
-    weather_set.df.index = ensure_datetime_utc(raw_df[ts_col], tz_hint=timezone)
-    weather_set.df.index.name = "ts_utc"
     weather_set.df = weather_set.df.sort_index()
     weather_set.df = weather_set.df[~weather_set.df.index.duplicated(keep="first")]
     return weather_set.to_dataframe()
@@ -108,7 +103,7 @@ def unavailable_feature_notes(rolling_windows: Iterable[int]) -> list[str]:
     if list(rolling_windows):
         notes.append(
             "Rolling meteorological feature generation is required by the methodology but is not "
-            "exposed by MetDataPy 1.0.0; the executable pipeline uses the supported MetDataPy "
+            "exposed by MetDataPy 1.1.0; the executable pipeline uses the supported MetDataPy "
             "lag/calendar/derived/QC feature set until MetDataPy adds rolling features."
         )
     notes.append(
@@ -116,6 +111,15 @@ def unavailable_feature_notes(rolling_windows: Iterable[int]) -> list[str]:
         "duplicate it until the official MetDataPy API is available."
     )
     return notes
+
+
+def _mapping_with_timezone(mapping: dict, timezone: str) -> dict:
+    """Return a mapping that declares the configured source timezone for MetDataPy."""
+    updated = dict(mapping)
+    ts_cfg = dict(updated.get("ts") or {})
+    ts_cfg.setdefault("timezone", timezone)
+    updated["ts"] = ts_cfg
+    return updated
 
 
 def make_supervised_with_metdatapy(
