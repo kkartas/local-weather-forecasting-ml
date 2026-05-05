@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import asdict, is_dataclass
 from importlib import metadata
 from pathlib import Path
 from typing import Any
@@ -123,10 +122,9 @@ def train(config: ExperimentConfig) -> pd.DataFrame:
         save_split_metadata(metadata, config.paths.processed_dir / f"split_metadata_{horizon_label}.json")
 
         scaled_splits, scaler = fit_apply_scaler_with_metdatapy(splits, feature_columns, config.scaling.method)
-        joblib.dump(
-            _scaler_to_dict(scaler),
-            config.paths.artifacts_dir / "scalers" / f"scaler_{horizon_label}.joblib",
-        )
+        # Persist the fitted scaler object directly so downstream tooling can
+        # reload it for inference; the previous indirection only stored repr().
+        joblib.dump(scaler, config.paths.artifacts_dir / "scalers" / f"scaler_{horizon_label}.joblib")
 
         x_train, y_train = arrays_from_split(scaled_splits["train"], feature_columns, target_col)
         x_val, y_val = arrays_from_split(scaled_splits["val"], feature_columns, target_col)
@@ -390,12 +388,6 @@ def _write_markdown_report(config: ExperimentConfig, metrics_df: pd.DataFrame, p
         ]
     )
     path.write_text("\n".join(lines), encoding="utf-8")
-
-
-def _scaler_to_dict(scaler: object) -> dict[str, Any]:
-    if is_dataclass(scaler):
-        return asdict(scaler)
-    return {"repr": repr(scaler)}
 
 
 def _markdown_table(df: pd.DataFrame) -> list[str]:
