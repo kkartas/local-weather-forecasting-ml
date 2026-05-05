@@ -24,23 +24,44 @@ class PersistenceModel:
 
 
 class MovingAverageModel:
-    """Forecasts with a trailing average from available target lag columns."""
+    """Forecasts with a trailing past-only mean of the target.
+
+    Prefers MetDataPy's pre-computed past-only rolling-mean column for the
+    smallest configured rolling window (``<target>_roll<window>_mean`` from
+    ``WeatherSet.rolling_features(closed='left')``) because it is a true
+    consecutive-step mean of the target. Falls back to averaging available
+    consecutive lag columns when no rolling mean is present.
+    """
 
     name = "moving_average"
 
     def __init__(self, target: str, max_lags: int = 4):
         self.target = target
         self.max_lags = max_lags
+        self.rolling_column: str | None = None
         self.lag_columns: list[str] = []
 
     def fit(self, train: pd.DataFrame, target_col: str) -> "MovingAverageModel":
+        rolling_candidates = [
+            (window, f"{self.target}_roll{window}_mean")
+            for window in _detect_rolling_windows(train.columns, self.target)
+        ]
+        rolling_candidates.sort(key=lambda item: item[0])
+        for _, name in rolling_candidates:
+            if name in train.columns:
+                self.rolling_column = name
+                self.lag_columns = []
+                return self
+
         lag_cols = [c for c in train.columns if str(c).startswith(f"{self.target}_lag")]
         self.lag_columns = sorted(lag_cols, key=_lag_number)[: self.max_lags]
         if not self.lag_columns:
-            raise ValueError(f"No lag columns available for moving-average target {self.target!r}")
+            raise ValueError(f"No lag or rolling-mean columns available for moving-average target {self.target!r}")
         return self
 
     def predict(self, frame: pd.DataFrame) -> np.ndarray:
+        if self.rolling_column is not None:
+            return frame[self.rolling_column].to_numpy(dtype=np.float32)
         return frame[self.lag_columns].mean(axis=1).to_numpy(dtype=np.float32)
 
 
@@ -59,3 +80,20 @@ def _lag_number(name: str) -> int:
         return int(suffix)
     except ValueError:
         return 10**9
+
+
+def _detect_rolling_windows(columns, target: str) -> list[int]:
+    """Return rolling-window sizes available as ``<target>_roll<window>_mean`` columns."""
+    prefix = f"{target}_roll"
+    suffix = "_mean"
+    windows: list[int] = []
+    for col in columns:
+        name = str(col)
+        if not name.startswith(prefix) or not name.endswith(suffix):
+            continue
+        middle = name[len(prefix) : -len(suffix)]
+        try:
+            windows.append(int(middle))
+        except ValueError:
+            continue
+    return windows
