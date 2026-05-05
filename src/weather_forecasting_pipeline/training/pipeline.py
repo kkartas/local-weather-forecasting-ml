@@ -24,12 +24,15 @@ from weather_forecasting_pipeline.datasets.splits import (
 from weather_forecasting_pipeline.evaluation.metrics import evaluate_predictions
 from weather_forecasting_pipeline.metdatapy_adapter import (
     fit_apply_scaler_with_metdatapy,
+    fit_target_scaler_with_metdatapy,
     ingest_raw_weathercloud,
+    inverse_transform_target_with_metdatapy,
     load_interim,
     make_supervised_with_metdatapy,
     preprocess_with_metdatapy,
     save_interim,
     split_by_fraction_with_metdatapy,
+    transform_target_with_metdatapy,
 )
 from weather_forecasting_pipeline.models.baselines import make_baseline
 from weather_forecasting_pipeline.models.dl_models import (
@@ -126,6 +129,16 @@ def train(config: ExperimentConfig) -> pd.DataFrame:
         # reload it for inference; the previous indirection only stored repr().
         joblib.dump(scaler, config.paths.artifacts_dir / "scalers" / f"scaler_{horizon_label}.joblib")
 
+        # The target is intentionally kept unscaled in scaled_splits so baseline
+        # and ML models predict directly in original units. DL models train far
+        # better on a standardised target, so a separate target scaler is fit
+        # on the training partition only and persisted for inference.
+        target_scaler = fit_target_scaler_with_metdatapy(splits["train"], target_col, config.scaling.method)
+        joblib.dump(
+            target_scaler,
+            config.paths.artifacts_dir / "scalers" / f"target_scaler_{horizon_label}.joblib",
+        )
+
         x_train, y_train = arrays_from_split(scaled_splits["train"], feature_columns, target_col)
         x_val, y_val = arrays_from_split(scaled_splits["val"], feature_columns, target_col)
         x_test, y_test = arrays_from_split(scaled_splits["test"], feature_columns, target_col)
@@ -158,6 +171,7 @@ def train(config: ExperimentConfig) -> pd.DataFrame:
                 target_col,
                 y_test,
                 predictions_dir,
+                target_scaler,
             )
             all_metrics.extend(dl_metrics)
 
@@ -215,6 +229,7 @@ def _train_dl_if_possible(
     target_col: str,
     y_test_tabular: np.ndarray,
     predictions_dir: Path,
+    target_scaler: object,
 ) -> list[dict[str, Any]]:
     if len(scaled_splits["train"]) < config.training.min_dl_train_rows:
         LOGGER.warning(
@@ -230,37 +245,45 @@ def _train_dl_if_possible(
         scaled_splits["train"], feature_columns, target_col, config.data.sequence_length
     )
     x_val, y_val = sequence_arrays_from_split(scaled_splits["val"], feature_columns, target_col, config.data.sequence_length)
-    x_test, y_test = sequence_arrays_from_split(
+    x_test, y_test_orig = sequence_arrays_from_split(
         scaled_splits["test"], feature_columns, target_col, config.data.sequence_length
     )
     if len(x_train) == 0 or len(x_val) == 0 or len(x_test) == 0:
         LOGGER.warning("Skipping %s for %s: insufficient rows after sequence construction", model_name, horizon_label)
         return []
 
+    # Train the recurrent/TCN regressor on a standardised target so the loss
+    # surface does not depend on the absolute magnitude of temp_c. Predictions
+    # are inverse-transformed back to original units before metric computation
+    # so DL results stay directly comparable with baseline and ML models.
+    y_train_scaled = transform_target_with_metdatapy(y_train, target_scaler, target_col).astype(np.float32)
+    y_val_scaled = transform_target_with_metdatapy(y_val, target_scaler, target_col).astype(np.float32)
+
     model = make_dl_model(model_name, input_size=len(feature_columns))
     result = train_dl_model(
         model,
         x_train,
-        y_train,
+        y_train_scaled,
         x_val,
-        y_val,
+        y_val_scaled,
         max_epochs=config.training.max_epochs,
         batch_size=config.training.batch_size,
         learning_rate=config.training.learning_rate,
         patience=config.training.patience,
         seed=config.project.random_seed,
     )
-    y_pred = predict_dl_model(result.model, x_test, batch_size=config.training.batch_size)
+    y_pred_scaled = predict_dl_model(result.model, x_test, batch_size=config.training.batch_size)
+    y_pred = inverse_transform_target_with_metdatapy(y_pred_scaled, target_scaler, target_col).astype(np.float32)
     save_torch_model(result.model, config.paths.artifacts_dir / "models" / f"{model_name}_{horizon_label}.pt")
     _save_predictions(
         predictions_dir,
         horizon_label,
         model_name,
-        y_test,
+        y_test_orig,
         y_pred,
-        scaled_splits["test"].index[-len(y_test) :],
+        scaled_splits["test"].index[-len(y_test_orig) :],
     )
-    row = _record_result(config, horizon_label, horizon_steps, model_name, "dl", y_test, y_pred)
+    row = _record_result(config, horizon_label, horizon_steps, model_name, "dl", y_test_orig, y_pred)
     row["best_validation_loss"] = result.best_validation_loss
     row["epochs_trained"] = result.epochs_trained
     row["tabular_test_rows"] = len(y_test_tabular)

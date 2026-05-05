@@ -166,3 +166,54 @@ def fit_apply_scaler_with_metdatapy(
         for col in scale_columns:
             scaled[name][col] = scaled_features[col].astype(float)
     return scaled, scaler
+
+
+def fit_target_scaler_with_metdatapy(
+    train_split: pd.DataFrame,
+    target_col: str,
+    method: str,
+) -> object:
+    """Fit a single-column scaler on the training target.
+
+    Deep-learning regressors converge much faster when the target is on the
+    same scale as the standardised features. Scaling the target uses only the
+    training partition (same leakage rule as the feature scaler) and is fit
+    via the same MetDataPy ``fit_scaler`` API so both scalers share their
+    parametrisation and can be persisted with ``joblib``.
+    """
+    return fit_scaler(train_split[[target_col]], method=method, columns=[target_col])
+
+
+def transform_target_with_metdatapy(values: pd.Series | "np.ndarray", scaler: object, target_col: str) -> "np.ndarray":
+    """Apply a fitted target scaler to a 1-D array of target values."""
+    import numpy as np
+
+    series = pd.Series(np.asarray(values, dtype=float), name=target_col)
+    transformed = apply_scaler(pd.DataFrame({target_col: series}), scaler)
+    return transformed[target_col].to_numpy(dtype=float)
+
+
+def inverse_transform_target_with_metdatapy(
+    values: "np.ndarray", scaler: object, target_col: str
+) -> "np.ndarray":
+    """Invert a fitted MetDataPy ScalerParams transform for a single column.
+
+    MetDataPy 1.2.0 does not expose an ``inverse_apply_scaler`` helper, so we
+    invert the documented formulas explicitly using the per-column parameters
+    stored on ``scaler.parameters[target_col]``. Supported methods match the
+    forward path: ``standard``, ``minmax``, ``robust``.
+    """
+    import numpy as np
+
+    params = getattr(scaler, "parameters", {}).get(target_col)
+    if params is None:
+        raise ValueError(f"Scaler does not contain parameters for target column {target_col!r}")
+    method = getattr(scaler, "method", "standard")
+    arr = np.asarray(values, dtype=float)
+    if method == "standard":
+        return arr * float(params["scale"]) + float(params["mean"])
+    if method == "minmax":
+        return arr * (float(params["max"]) - float(params["min"])) + float(params["min"])
+    if method == "robust":
+        return arr * float(params["iqr"]) + float(params["median"])
+    raise ValueError(f"Unsupported scaler method for inverse transform: {method!r}")
