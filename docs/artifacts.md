@@ -35,9 +35,19 @@ Model files use horizon-specific names so each forecast horizon has independent 
 
 ```text
 artifacts/scalers/scaler_<horizon>.joblib
+artifacts/scalers/target_scaler_<horizon>.joblib
 ```
 
-Scalers are fit on training features only.
+Both scalers are fit on the training partition only and persisted as the
+fitted MetDataPy `ScalerParams` objects via `joblib`, so downstream
+inference can `joblib.load` and `apply_scaler` without any further
+configuration.
+
+- `scaler_<horizon>.joblib` — feature scaler used by ML and DL models.
+- `target_scaler_<horizon>.joblib` — target-only scaler used during DL
+  training. DL predictions are inverse-transformed back to original
+  units before metric computation, so reported metrics are always in
+  the target's natural units.
 
 ## Metrics
 
