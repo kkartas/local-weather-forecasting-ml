@@ -34,6 +34,9 @@ data:
     h03: 18
     h06: 36
     h12: 72
+  optional_horizons:
+    m10: 1
+    h24: 144
   lags: [1, 3, 6, 12, 24, 72, 144]
   rolling_windows: [6, 18, 36, 144]
   sequence_length: 144
@@ -41,6 +44,8 @@ data:
 ```
 
 The source data is expected at 10-minute resolution. Horizon values are expressed in source time steps, so `6` means one hour.
+
+Both `horizons` and `optional_horizons` are trained. The `optional_horizons` block exists so contributors can keep auxiliary horizons (such as the very short `m10` and the day-ahead `h24`) syntactically separate from the headline dissertation horizons without changing the iteration policy. Entries are merged at run time, sorted by horizon length, and each `(model, horizon)` pair is trained independently. On key collision, `horizons` wins.
 
 ## Split Settings
 
@@ -61,6 +66,11 @@ scaling:
 ```
 
 Supported scaling methods are delegated to MetDataPy scaler utilities. The scaler is fit on the training split only and applied to validation and test splits.
+
+Two scalers are saved per horizon:
+
+- `artifacts/scalers/scaler_<horizon>.joblib` — feature scaler used by ML and DL models.
+- `artifacts/scalers/target_scaler_<horizon>.joblib` — target-only scaler used during deep-learning training so the loss surface does not depend on the absolute magnitude of the target. Predictions are inverse-transformed back to original units before metric computation, so reported MAE/RMSE/MAPE are always in the target's natural units.
 
 ## Model Settings
 

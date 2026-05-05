@@ -69,8 +69,16 @@ Feature columns are selected from numeric columns while excluding:
 
 - the current horizon target column
 - all other future target columns containing `_t+`
+- every column whose name starts with `qc_` (MetDataPy QC flag columns)
+- the deterministic `gap` indicator from `WeatherSet.insert_missing`
 
-This prevents future target leakage.
+The first two exclusions prevent future target leakage. The QC and `gap`
+exclusions are required because MetDataPy 1.2.0 computes `qc_spike` and
+`qc_flatline` with centered rolling windows; using those flags as model
+features would let each row see a small number of future observations.
+The exclusion is enforced by
+`tests/test_leakage.py::test_select_feature_columns_excludes_qc_and_gap_flags`,
+and a causal-window option in MetDataPy is tracked in `METDATAPY.md`.
 
 ## Chronological Split
 
@@ -106,8 +114,12 @@ This file records:
 
 Scaling is applied after splitting:
 
-1. fit scaler on train features only
+1. fit the **feature scaler** on train features only
 2. transform train, validation, and test features using the train-fitted scaler
-3. save scaler parameters under `artifacts/scalers/`
+3. fit the **target scaler** on the training target column only and persist it for DL inverse transforms
+4. save both scaler objects under `artifacts/scalers/`
 
-Validation and test statistics are never used to fit scalers.
+Validation and test statistics are never used to fit either scaler. The
+target scaler exists so DL models can train on a standardised target
+without breaking the comparability of MAE/RMSE/MAPE across families
+(see `docs/training.md`).

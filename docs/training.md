@@ -14,7 +14,14 @@ Predicts the future target as the current observed target value.
 
 ### Moving Average
 
-Predicts from an average of available target lag columns.
+Predicts the future target as a past-only mean of the target. The model
+prefers the MetDataPy rolling-mean column for the smallest configured
+rolling window (`<target>_roll<window>_mean`, computed with
+`closed="left"` and therefore strictly past-only). When no such column
+is available it falls back to averaging the target lag columns sorted by
+lag number. The rolling-mean preference makes the baseline a true
+consecutive-step moving average rather than an average of arbitrary
+non-consecutive lags.
 
 ## Traditional Machine Learning Models
 
@@ -59,9 +66,22 @@ Deep-learning training uses:
 
 - PyTorch
 - Adam optimizer
-- MSE loss
+- MSE loss on a standardised target (see "Target scaling" below)
 - validation-loss early stopping
 - deterministic seed setup where supported
+
+### Target scaling
+
+Baseline and ML models predict directly in the target's original units
+because the feature scaler intentionally leaves the target column
+unscaled. Recurrent and TCN regressors, however, converge much faster
+when the target is also standardised, so a separate target scaler is
+fit on the training partition only (same leakage rule as the feature
+scaler) using MetDataPy's `fit_scaler`. During training, target values
+are transformed; predictions are inverse-transformed back to original
+units before metric computation, so MAE/RMSE/MAPE for DL stay directly
+comparable with baseline and ML metrics. The fitted target scaler is
+saved at `artifacts/scalers/target_scaler_<horizon>.joblib`.
 
 Configured parameters:
 
