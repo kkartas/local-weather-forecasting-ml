@@ -30,16 +30,40 @@ def target_column_name(target: str, horizon_steps: int) -> str:
     return f"{target}_t+{horizon_steps}"
 
 
+QC_FEATURE_PREFIXES: tuple[str, ...] = ("qc_",)
+QC_FEATURE_NAMES: frozenset[str] = frozenset({"gap"})
+
+
+def _is_qc_or_gap_column(name: str) -> bool:
+    """Return True for MetDataPy QC flag and gap columns.
+
+    MetDataPy 1.2.0 computes ``qc_spike`` and ``qc_flatline`` with centered
+    rolling windows (see ``metdatapy/qc.py``). Using those flags as model
+    features would let each row see a small number of future observations
+    (~half a window). Excluding them here avoids that leakage at the
+    forecasting layer until MetDataPy exposes a causal-window option (tracked
+    in ``METDATAPY.md``). ``gap`` is a deterministic indicator from
+    ``insert_missing`` and is also excluded so the feature set stays purely
+    observational.
+    """
+    if name in QC_FEATURE_NAMES:
+        return True
+    return any(name.startswith(prefix) for prefix in QC_FEATURE_PREFIXES)
+
+
 def select_feature_columns(df: pd.DataFrame, target_col: str) -> list[str]:
-    """Select numeric feature columns without target leakage columns."""
+    """Select numeric feature columns without target or QC leakage columns."""
     feature_columns: list[str] = []
     for col in df.columns:
+        col_str = str(col)
         if col == target_col:
             continue
-        if "_t+" in str(col):
+        if "_t+" in col_str:
+            continue
+        if _is_qc_or_gap_column(col_str):
             continue
         if pd.api.types.is_numeric_dtype(df[col]):
-            feature_columns.append(str(col))
+            feature_columns.append(col_str)
     if not feature_columns:
         raise ValueError("No numeric feature columns available after excluding future targets")
     return feature_columns
