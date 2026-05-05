@@ -96,7 +96,9 @@ def train(config: ExperimentConfig) -> pd.DataFrame:
     predictions_dir = config.paths.processed_dir / "predictions"
     predictions_dir.mkdir(parents=True, exist_ok=True)
 
-    for horizon_label, horizon_steps in config.data.horizons.items():
+    horizons_to_train = _resolved_horizons(config)
+
+    for horizon_label, horizon_steps in horizons_to_train.items():
         target_col = target_column_name(config.data.target, horizon_steps)
         LOGGER.info("Preparing horizon %s (%s steps)", horizon_label, horizon_steps)
         supervised = make_supervised_with_metdatapy(
@@ -183,6 +185,26 @@ def run_all(config: ExperimentConfig) -> pd.DataFrame:
     metrics = train(config)
     evaluate(config)
     return metrics
+
+
+def _resolved_horizons(config: ExperimentConfig) -> dict[str, int]:
+    """Merge required and optional horizons in deterministic order.
+
+    The configuration exposes ``horizons`` (always trained) and an optional
+    ``optional_horizons`` block. Earlier versions parsed the optional block but
+    never iterated it, so configurations such as ``configs/default.yaml`` that
+    placed ``m10`` and ``h24`` under ``optional_horizons`` silently produced
+    no results for those horizons. The dissertation requires multi-horizon
+    coverage, so both blocks are now trained. ``horizons`` wins on key
+    collision and the merged mapping is sorted by horizon length so the
+    summary report and plots have a consistent horizon axis.
+    """
+    merged: dict[str, int] = {}
+    for label, steps in (config.data.optional_horizons or {}).items():
+        merged[label] = int(steps)
+    for label, steps in config.data.horizons.items():
+        merged[label] = int(steps)
+    return dict(sorted(merged.items(), key=lambda kv: kv[1]))
 
 
 def _train_dl_if_possible(
