@@ -6,6 +6,49 @@ Current installed version inspected: `metdatapy==1.2.0`.
 
 ## Active Missing Or Incomplete Features
 
+### 2026-05-05 - Causal-window option for QC spike and flatline checks
+
+- Required feature:
+  Allow `qc_spike` and `qc_flatline` to compute their rolling local
+  median/MAD/variance with `center=False, closed="left"` (or an equivalent
+  `causal=True` toggle) so the resulting QC flags only depend on past
+  observations.
+- Reason:
+  MetDataPy 1.2.0 implements both checks with `pandas.Series.rolling(window,
+  center=True, ...)` (`metdatapy/qc.py:123` and `:187`). When the resulting
+  QC flag columns are used as model features, each row sees roughly half a
+  window of future observations (≈20–40 minutes at 10-min cadence). That
+  violates the dissertation's "no future information in features" rule.
+- Workaround in this repository:
+  `weather_forecasting_pipeline.datasets.splits.select_feature_columns`
+  excludes every column whose name starts with `qc_`, plus the deterministic
+  `gap` indicator from `insert_missing`. Tests in
+  `tests/test_leakage.py::test_select_feature_columns_excludes_qc_and_gap_flags`
+  guard the rule.
+- Expected input:
+  Existing dataframes; behaviour controlled per-call via a `causal=True`
+  argument or via the `WeatherSet` configuration.
+- Expected output:
+  QC flag columns whose value at row `t` only depends on observations at or
+  before `t`.
+- Suggested API:
+  `qc_spike(df, columns=None, window=9, thresh=6.0, causal=False)`
+  `qc_flatline(df, columns=None, window=5, tol=0.0, causal=False)`
+  with equivalent toggles surfaced via `WeatherSet.qc_spike()` and
+  `WeatherSet.qc_flatline()`.
+- Priority:
+  Medium
+- Blocking status:
+  Does not block experiments because QC features are excluded from the model
+  feature set in this repository. Resolving this in MetDataPy would let the
+  forecasting layer drop the local exclusion and benefit from QC information
+  in the feature set without leakage.
+- Forecasting pipeline usage:
+  Required by `weather_forecasting_pipeline.datasets.splits.select_feature_columns`
+  before QC flags can be re-included as features.
+- Dissertation update required:
+  No.
+
 ### 2026-05-03 - Duplicate timestamp handling policy in Weathercloud ingestion
 
 - Required feature:
