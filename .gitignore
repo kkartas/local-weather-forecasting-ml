@@ -41,3 +41,6 @@ Thumbs.db
 # Local Claude Code state (per-checkout, not part of the project).
 .claude/
 CLAUDE.md
+AGENTS.md
+METDATAPY.md
+REVIEW_REPORT.md
