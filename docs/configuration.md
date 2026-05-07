@@ -76,12 +76,14 @@ Two scalers are saved per horizon:
 
 ```yaml
 models:
-  baselines: [persistence, moving_average]
+  baselines: [persistence, moving_average, climatology]
   ml: [linear_regression, random_forest, gradient_boosting, svr]
   dl: [lstm, gru, tcn]
 ```
 
 Each configured model is trained separately for each configured horizon.
+Supported baseline names are `persistence`, `moving_average`, and
+`climatology`; all three are fit on the training partition only.
 
 ## Training Settings
 

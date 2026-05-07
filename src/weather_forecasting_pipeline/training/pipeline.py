@@ -21,7 +21,7 @@ from weather_forecasting_pipeline.datasets.splits import (
     sequence_arrays_from_split,
     target_column_name,
 )
-from weather_forecasting_pipeline.evaluation.metrics import evaluate_predictions
+from weather_forecasting_pipeline.evaluation.metrics import evaluate_predictions, persistence_skill_score
 from weather_forecasting_pipeline.metdatapy_adapter import (
     fit_apply_scaler_with_metdatapy,
     fit_target_scaler_with_metdatapy,
@@ -140,7 +140,6 @@ def train(config: ExperimentConfig) -> pd.DataFrame:
         )
 
         x_train, y_train = arrays_from_split(scaled_splits["train"], feature_columns, target_col)
-        x_val, y_val = arrays_from_split(scaled_splits["val"], feature_columns, target_col)
         x_test, y_test = arrays_from_split(scaled_splits["test"], feature_columns, target_col)
 
         for model_name in config.models.baselines:
@@ -176,6 +175,7 @@ def train(config: ExperimentConfig) -> pd.DataFrame:
             all_metrics.extend(dl_metrics)
 
     metrics_df = pd.DataFrame(all_metrics)
+    metrics_df = _attach_persistence_skill_score(metrics_df)
     _write_metrics_and_plots(config, metrics_df)
     return metrics_df
 
@@ -186,6 +186,8 @@ def evaluate(config: ExperimentConfig) -> pd.DataFrame:
     if not metrics_csv.exists():
         raise FileNotFoundError(f"Metrics file not found: {metrics_csv}. Run train first.")
     metrics_df = pd.read_csv(metrics_csv)
+    if "skill_score_persistence" not in metrics_df.columns:
+        metrics_df = _attach_persistence_skill_score(metrics_df)
     _write_metrics_and_plots(config, metrics_df)
     return metrics_df
 
@@ -197,6 +199,31 @@ def run_all(config: ExperimentConfig) -> pd.DataFrame:
     metrics = train(config)
     evaluate(config)
     return metrics
+
+
+def _attach_persistence_skill_score(metrics_df: pd.DataFrame) -> pd.DataFrame:
+    """Add a per-horizon skill-score column referenced to persistence.
+
+    For each horizon, the persistence row's RMSE is the skill anchor; every
+    other model in that horizon receives ``1 - rmse_model**2 / rmse_pers**2``.
+    Persistence's own row gets ``0`` by definition. Horizons without a
+    persistence row (e.g. when the baseline list does not include it) get
+    ``NaN``. The column complements MAPE, which is unstable near 0 °C.
+    """
+    if metrics_df.empty or "horizon_label" not in metrics_df.columns:
+        return metrics_df
+    out = metrics_df.copy()
+    out["skill_score_persistence"] = np.nan
+    for horizon, group in out.groupby("horizon_label"):
+        persistence_rows = group[group["model"] == "persistence"]
+        if persistence_rows.empty:
+            continue
+        anchor_rmse = float(persistence_rows.iloc[0]["rmse"])
+        for idx in group.index:
+            score = persistence_skill_score(float(out.at[idx, "rmse"]), anchor_rmse)
+            if score is not None:
+                out.at[idx, "skill_score_persistence"] = score
+    return out
 
 
 def _resolved_horizons(config: ExperimentConfig) -> dict[str, int]:
@@ -259,7 +286,9 @@ def _train_dl_if_possible(
     y_train_scaled = transform_target_with_metdatapy(y_train, target_scaler, target_col).astype(np.float32)
     y_val_scaled = transform_target_with_metdatapy(y_val, target_scaler, target_col).astype(np.float32)
 
-    model = make_dl_model(model_name, input_size=len(feature_columns))
+    model = make_dl_model(
+        model_name, input_size=len(feature_columns), sequence_length=config.data.sequence_length
+    )
     result = train_dl_model(
         model,
         x_train,
@@ -399,8 +428,23 @@ def _write_markdown_report(config: ExperimentConfig, metrics_df: pd.DataFrame, p
     if metrics_df.empty:
         lines.append("No metrics were produced.")
     else:
-        display_cols = ["model_family", "model", "horizon_label", "horizon_steps", "mae", "rmse", "mape", "n_test"]
-        lines.extend(_markdown_table(metrics_df[display_cols].sort_values(["horizon_steps", "model_family", "model"])))
+        display_cols = [
+            "model_family",
+            "model",
+            "horizon_label",
+            "horizon_steps",
+            "mae",
+            "rmse",
+            "mape",
+            "skill_score_persistence",
+            "n_test",
+        ]
+        available_cols = [c for c in display_cols if c in metrics_df.columns]
+        lines.extend(
+            _markdown_table(
+                metrics_df[available_cols].sort_values(["horizon_steps", "model_family", "model"])
+            )
+        )
     lines.extend(
         [
             "",

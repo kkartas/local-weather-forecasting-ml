@@ -4,6 +4,90 @@ This file records divergences between the written dissertation methodology and t
 
 Use this file only for changes affecting methodology, experimental design, or scientific assumptions. General implementation notes and missing MetDataPy features belong elsewhere.
 
+## 2026-05-08 - Climatology baseline added
+
+- Affected component:
+  `weather_forecasting_pipeline.models.baselines.ClimatologyModel`,
+  `configs/default.yaml`.
+- What changed:
+  Added a hour-of-year climatology baseline that forecasts the training-only
+  mean of the target keyed by ``(month, hour)`` of the forecast origin. The
+  default configuration now lists `climatology` alongside `persistence` and
+  `moving_average`.
+- Why it changed:
+  Persistence is a strong anchor at short horizons but uninformative for
+  longer ones; a climatology baseline is the standard meteorological second
+  anchor. Including it gives the dissertation comparison chapter a fair
+  long-horizon reference and tightens the "ML beats trivial baselines" story.
+- Methodology impact:
+  Adds one row per horizon to the metrics table. No effect on existing model
+  results because climatology fitting touches only the training partition.
+- Dissertation update required:
+  Yes, briefly mention the climatology baseline definition (`(month, hour)`
+  lookup of training-only target means) in the methodology chapter.
+
+## 2026-05-08 - Persistence skill score reported alongside MAE/RMSE/MAPE
+
+- Affected component:
+  `weather_forecasting_pipeline.evaluation.metrics.persistence_skill_score`,
+  `weather_forecasting_pipeline.training.pipeline._attach_persistence_skill_score`.
+- What changed:
+  Each metrics row now carries a `skill_score_persistence` column equal to
+  `1 - rmse_model**2 / rmse_persistence**2` per horizon. The persistence row
+  is `0` by definition; positive values mean the model improves on
+  persistence; negative values mean it underperforms.
+- Why it changed:
+  MAPE is unstable for temperature near 0 °C and across the sign change.
+  Persistence skill score is the standard short-term forecasting summary
+  metric, scale-free and robust to small target magnitudes. Reporting both
+  keeps the dissertation comparison defensible without removing MAPE.
+- Methodology impact:
+  Purely additive; the column is derived from RMSE values already computed
+  on the test partition.
+- Dissertation update required:
+  Yes, briefly define the skill score formula and how to interpret it.
+
+## 2026-05-08 - TCN receptive field grows with the configured sequence length
+
+- Affected component:
+  `weather_forecasting_pipeline.models.dl_models.TCNRegressor`,
+  `weather_forecasting_pipeline.models.dl_models.make_dl_model`.
+- What changed:
+  The TCN now picks its dilation schedule from `data.sequence_length` so the
+  receptive field always covers the input window. The previous fixed
+  `(1, 2, 4)` schedule had a 15-step receptive field, while the default
+  configuration uses 144-step input sequences, so most of the input was
+  ignored.
+- Why it changed:
+  Reporting TCN as a multi-hour temporal model is only defensible if the
+  network can actually see the multi-hour context the dissertation describes.
+- Methodology impact:
+  TCN results will differ from earlier runs because the model now uses the
+  full input window. Other model families are unaffected.
+- Dissertation update required:
+  Yes, mention the dilation schedule selection rule (doubling dilations until
+  receptive field ≥ sequence length, capped at d=64).
+
+## 2026-05-08 - Dropout regularisation added to DL models
+
+- Affected component:
+  `weather_forecasting_pipeline.models.dl_models.RecurrentRegressor`,
+  `weather_forecasting_pipeline.models.dl_models.TemporalBlock`,
+  `weather_forecasting_pipeline.models.dl_models.TCNRegressor`.
+- What changed:
+  All three DL models now include a small dropout (`p=0.1`) between sequence
+  encoding and the regression head; TCN blocks additionally apply dropout
+  inside each block.
+- Why it changed:
+  The dissertation's modest training-row budget combined with sequence
+  length 144 makes the unregularised default prone to overfit, especially
+  on short horizons where persistence and ML baselines are strong.
+- Methodology impact:
+  DL numbers will shift slightly versus earlier runs. No change to the
+  scientific scope or to baseline/ML comparisons.
+- Dissertation update required:
+  Mention DL dropout rate where the network architectures are described.
+
 ## 2026-05-05 - QC flag columns excluded from model feature set
 
 - Affected component:

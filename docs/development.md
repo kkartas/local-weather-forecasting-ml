@@ -46,6 +46,15 @@ Current test coverage includes:
   (`tests/test_leakage.py`)
 - end-to-end CLI smoke run with optional-horizon training and reloadable
   scaler artifact (`tests/test_pipeline_artifacts.py`)
+- climatology baseline correctness, persistence skill score behavior,
+  TCN receptive-field sizing, and target-scaler round-trip
+  (`tests/test_baselines_and_metrics.py`)
+
+## Continuous Integration
+
+A GitHub Actions workflow at `.github/workflows/ci.yml` runs `pytest`
+and a CLI smoke run on Python 3.10 and 3.11 for every push and pull
+request to `master`. Keep that workflow green before merging changes.
 
 ## Documentation Updates
 
