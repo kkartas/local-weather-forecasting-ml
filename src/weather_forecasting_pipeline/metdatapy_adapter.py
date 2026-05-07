@@ -200,8 +200,12 @@ def inverse_transform_target_with_metdatapy(
 
     MetDataPy 1.2.0 does not expose an ``inverse_apply_scaler`` helper, so we
     invert the documented formulas explicitly using the per-column parameters
-    stored on ``scaler.parameters[target_col]``. Supported methods match the
-    forward path: ``standard``, ``minmax``, ``robust``.
+    stored on ``scaler.parameters[target_col]``. The MetDataPy scaler stores
+    a single ``scale`` value per column whose meaning depends on ``method``:
+
+    - ``standard``: ``scale`` = standard deviation, paired with ``mean``.
+    - ``minmax``: ``scale`` = ``max - min``, paired with ``min``.
+    - ``robust``: ``scale`` = interquartile range, paired with ``median``.
     """
     import numpy as np
 
@@ -213,7 +217,7 @@ def inverse_transform_target_with_metdatapy(
     if method == "standard":
         return arr * float(params["scale"]) + float(params["mean"])
     if method == "minmax":
-        return arr * (float(params["max"]) - float(params["min"])) + float(params["min"])
+        return arr * float(params["scale"]) + float(params["min"])
     if method == "robust":
         return arr * float(params["iqr"]) + float(params["median"])
     raise ValueError(f"Unsupported scaler method for inverse transform: {method!r}")

@@ -21,8 +21,10 @@ def test_climatology_uses_only_training_observations():
     idx = pd.date_range("2024-01-01", periods=72, freq="1h", tz="UTC")
     # Diurnal sine pattern: each hour-of-day has a distinct mean across days.
     temp = 10.0 + 5.0 * np.sin((idx.hour.to_numpy() / 24.0) * 2 * np.pi)
-    train = pd.DataFrame({"temp_c": temp, "temp_c_t+1": temp}, index=idx[:48])
-    test = pd.DataFrame({"temp_c": np.zeros(24), "temp_c_t+1": np.zeros(24)}, index=idx[48:])
+    train_idx = idx[:48]
+    test_idx = idx[48:]
+    train = pd.DataFrame({"temp_c": temp[:48], "temp_c_t+1": temp[:48]}, index=train_idx)
+    test = pd.DataFrame({"temp_c": np.zeros(len(test_idx)), "temp_c_t+1": np.zeros(len(test_idx))}, index=test_idx)
 
     model = ClimatologyModel(target="temp_c").fit(train, "temp_c_t+1")
     pred = model.predict(test)
