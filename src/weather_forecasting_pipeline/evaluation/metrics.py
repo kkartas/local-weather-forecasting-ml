@@ -41,6 +41,18 @@ def evaluate_predictions(y_true: np.ndarray, y_pred: np.ndarray, mape_epsilon: f
     }
 
 
+def persistence_skill_score(model_rmse: float, persistence_rmse: float) -> float | None:
+    """RMSE-based skill score relative to persistence.
+
+    Returns ``1 - model_rmse**2 / persistence_rmse**2`` so positive values mean
+    the model improves on persistence and ``0`` means it ties. Undefined when
+    persistence RMSE is non-positive (e.g. degenerate test set).
+    """
+    if persistence_rmse is None or not np.isfinite(persistence_rmse) or persistence_rmse <= 0:
+        return None
+    return float(1.0 - (model_rmse ** 2) / (persistence_rmse ** 2))
+
+
 def _aligned(y_true: np.ndarray, y_pred: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     yt = np.asarray(y_true, dtype=np.float64).reshape(-1)
     yp = np.asarray(y_pred, dtype=np.float64).reshape(-1)

@@ -37,7 +37,7 @@ scaling:
   method: standard
 
 models:
-  baselines: [persistence, moving_average]
+  baselines: [persistence, moving_average, climatology]
   ml: [linear_regression, random_forest, gradient_boosting, svr]
   dl: [lstm, gru, tcn]
 

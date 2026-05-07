@@ -25,6 +25,23 @@ evaluation:
 
 If all true values are near zero, MAPE is reported as undefined.
 
+For temperature targets near 0 °C MAPE is unstable even with masking, so
+the persistence skill score (below) is the recommended cross-horizon
+summary metric.
+
+### Persistence Skill Score
+
+For each `(target, horizon)` the metrics table also reports
+
+```text
+skill_score_persistence = 1 - rmse_model**2 / rmse_persistence**2
+```
+
+The persistence row is `0` by definition. Positive values mean the model
+improves on persistence; negative values mean it underperforms it.
+Horizons that do not include `persistence` in `models.baselines` get
+`NaN` for this column.
+
 ## Metrics Outputs
 
 ```text
@@ -42,6 +59,7 @@ Each row contains:
 - MAE
 - RMSE
 - MAPE
+- persistence skill score
 - test row count
 
 Deep-learning rows may also include:

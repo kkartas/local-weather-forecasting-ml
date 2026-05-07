@@ -23,6 +23,15 @@ lag number. The rolling-mean preference makes the baseline a true
 consecutive-step moving average rather than an average of arbitrary
 non-consecutive lags.
 
+### Climatology
+
+Predicts the future target as the training-only mean of the target keyed
+by the forecast origin's `(month, hour)`. Unseen keys at inference fall
+back to the global training mean. The lookup is fitted once per horizon
+on `splits["train"]`, so no validation or test rows leak into the
+baseline. Climatology is the standard meteorological long-horizon
+anchor and complements persistence at short horizons.
+
 ## Traditional Machine Learning Models
 
 Implemented in `weather_forecasting_pipeline.models.ml_models`.
@@ -59,6 +68,18 @@ sequence_length: 144
 ```
 
 At 10-minute resolution, `144` steps represent 24 hours of input history.
+
+All three DL models apply a small dropout (`p=0.1`) between sequence
+encoding and the regression head; the TCN additionally applies dropout
+inside each temporal block. Dropout is fixed in code rather than
+configured because the dissertation reports a single fixed
+configuration per family.
+
+The TCN's dilation schedule is selected automatically from
+`sequence_length`: dilations double (1, 2, 4, ...) — capped at 64 — and
+enough blocks are stacked so the receptive field is at least
+`sequence_length`. With `sequence_length=144` the schedule is
+`(1, 2, 4, 8, 16, 32, 64)`, giving a receptive field of 255 steps.
 
 ## Deep Learning Training
 

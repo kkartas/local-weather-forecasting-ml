@@ -21,10 +21,10 @@ The pipeline ingests raw 10-minute Weathercloud CSV files, prepares canonical me
 - derived meteorological features
 - cyclic time and wind-direction features
 - lag, rolling, and forecast-horizon features
-- baseline models: persistence, moving average
+- baseline models: persistence, moving average, climatology
 - scikit-learn models: linear regression, random forest, gradient boosting, SVR
-- PyTorch models: LSTM, GRU, TCN
-- MAE, RMSE, and safe MAPE evaluation
+- PyTorch models: LSTM, GRU, TCN (TCN dilations auto-sized to sequence length)
+- MAE, RMSE, safe MAPE, and persistence skill score evaluation
 - CSV, JSON, Markdown, plot, model, and scaler artifacts
 
 ## Project Layout

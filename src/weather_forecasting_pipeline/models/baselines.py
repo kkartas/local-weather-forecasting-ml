@@ -5,6 +5,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+CLIMATOLOGY_GLOBAL_KEY = -1
+
 
 class PersistenceModel:
     """Forecasts the future target as the current observed target value."""
@@ -65,12 +67,61 @@ class MovingAverageModel:
         return frame[self.lag_columns].mean(axis=1).to_numpy(dtype=np.float32)
 
 
-def make_baseline(name: str, target: str) -> PersistenceModel | MovingAverageModel:
+class ClimatologyModel:
+    """Forecasts the hour-of-year mean of the target observed in training.
+
+    The lookup is keyed by ``(month, hour)``. Forecasts for unseen keys fall
+    back to the overall training mean, which mirrors the standard
+    meteorological climatology baseline. Fitting touches only the training
+    split, satisfying the dissertation's no-future-information rule.
+    """
+
+    name = "climatology"
+
+    def __init__(self, target: str):
+        self.target = target
+        self.global_mean: float = 0.0
+        self.lookup: dict[tuple[int, int], float] = {}
+
+    def fit(self, train: pd.DataFrame, target_col: str) -> "ClimatologyModel":
+        if self.target not in train.columns:
+            raise ValueError(f"Climatology target {self.target!r} is missing")
+        if not isinstance(train.index, pd.DatetimeIndex):
+            raise ValueError("Climatology baseline requires a DatetimeIndex")
+        # Use the present-time observation rather than the shifted target so a
+        # single fitted lookup serves every horizon: predicting at time ``t``
+        # always uses the climatology of ``t``'s month/hour, regardless of
+        # how far ahead the dissertation reports.
+        values = train[self.target].astype(float)
+        self.global_mean = float(values.mean())
+        keyed = pd.DataFrame(
+            {
+                "value": values.to_numpy(),
+                "month": train.index.month,
+                "hour": train.index.hour,
+            }
+        )
+        means = keyed.groupby(["month", "hour"], as_index=True)["value"].mean()
+        self.lookup = {(int(m), int(h)): float(v) for (m, h), v in means.items()}
+        return self
+
+    def predict(self, frame: pd.DataFrame) -> np.ndarray:
+        if not isinstance(frame.index, pd.DatetimeIndex):
+            raise ValueError("Climatology baseline requires a DatetimeIndex on predict input")
+        out = np.empty(len(frame), dtype=np.float32)
+        for i, (month, hour) in enumerate(zip(frame.index.month, frame.index.hour)):
+            out[i] = self.lookup.get((int(month), int(hour)), self.global_mean)
+        return out
+
+
+def make_baseline(name: str, target: str) -> PersistenceModel | MovingAverageModel | ClimatologyModel:
     """Create a baseline model by configured name."""
     if name == "persistence":
         return PersistenceModel(target=target)
     if name == "moving_average":
         return MovingAverageModel(target=target)
+    if name == "climatology":
+        return ClimatologyModel(target=target)
     raise ValueError(f"Unknown baseline model: {name}")
 
 
