@@ -47,6 +47,9 @@ Current test coverage includes:
   (`tests/test_leakage.py`)
 - end-to-end CLI smoke run with optional-horizon training and reloadable
   scaler artifact (`tests/test_pipeline_artifacts.py`)
+- structured progress logging: ISO-timestamped formatter, per-stage,
+  per-horizon, and per-model start/finish markers with `elapsed=` and
+  `mae=` fields (`tests/test_logging.py`)
 - climatology baseline correctness, persistence skill score behavior,
   TCN receptive-field sizing, and target-scaler round-trip
   (`tests/test_baselines_and_metrics.py`)

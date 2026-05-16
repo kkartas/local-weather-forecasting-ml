@@ -117,6 +117,34 @@ training:
 
 If the training split has fewer rows than `min_dl_train_rows`, deep-learning models are skipped for that horizon.
 
+## Progress Logging
+
+The CLI installs a single root handler with ISO-8601 UTC timestamps
+(`YYYY-MM-DDTHH:MM:SSZ LEVEL logger: message`). Every pipeline stage,
+horizon, and model emits matching `Stage start: ...` and
+`Stage finish: ... elapsed=<seconds>s ...` log lines, so a long run is
+auditable from the terminal output alone.
+
+The training stage logs include:
+
+- a `Train context: ...` line with the resolved horizons, target, and the
+  configured baseline / ML / DL model lists,
+- one start/finish pair for each horizon (`Stage start: horizon h01 steps=6 target=temp_c_t+6`),
+- per-stage start/finish pairs for the supervised dataset build,
+  chronological split, feature-scaler fit, and target-scaler fit,
+- a `Stage start: train model family=<family> model=<name> horizon=<label> ...`
+  line before every baseline, ML, and DL fit, followed by a matching
+  finish line that includes `elapsed=<seconds>s`, `mae=<value>`, and
+  `rmse=<value>` (DL finish lines also include `epochs_trained` and
+  `best_validation_loss`),
+- explicit `Skip model: family=dl model=<name> horizon=<label> reason=<...>`
+  warnings when a deep-learning model cannot be trained because the train
+  split has fewer rows than `min_dl_train_rows` or because sequence
+  construction does not yield enough samples.
+
+The logging additions are observational only; training data, splits,
+scalers, hyperparameters, and metrics are unchanged.
+
 ## Saved Model Artifacts
 
 Baseline and scikit-learn models:

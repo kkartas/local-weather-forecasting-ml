@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import logging
+import time
+from contextlib import contextmanager
 from importlib import metadata
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 import joblib
 import numpy as np
@@ -47,6 +49,41 @@ from weather_forecasting_pipeline.utils.reproducibility import set_random_seed
 LOGGER = logging.getLogger(__name__)
 
 
+@contextmanager
+def _log_stage(name: str, **context: Any) -> Iterator[dict[str, Any]]:
+    """Log start, finish, and elapsed time for a pipeline stage.
+
+    The context dict can be mutated by the caller (e.g. to record output
+    sizes) and its key=value pairs are appended to the finish line. The
+    stage name is the same on the start and finish lines so log filters
+    (e.g. ``Stage finish: train``) line up unambiguously.
+    """
+    started = time.perf_counter()
+    LOGGER.info("Stage start: %s%s", name, _fmt_context(context))
+    payload: dict[str, Any] = dict(context)
+    try:
+        yield payload
+    except Exception:
+        elapsed = time.perf_counter() - started
+        LOGGER.exception("Stage error: %s elapsed=%.2fs%s", name, elapsed, _fmt_context(payload))
+        raise
+    elapsed = time.perf_counter() - started
+    LOGGER.info("Stage finish: %s elapsed=%.2fs%s", name, elapsed, _fmt_context(payload))
+
+
+def _fmt_context(payload: dict[str, Any]) -> str:
+    """Render a context dict as `key=value` pairs for log messages."""
+    if not payload:
+        return ""
+    return " " + " ".join(f"{key}={_fmt_value(value)}" for key, value in payload.items())
+
+
+def _fmt_value(value: Any) -> str:
+    if isinstance(value, float):
+        return f"{value:.4f}" if np.isfinite(value) else "nan"
+    return str(value)
+
+
 def canonical_path(config: ExperimentConfig) -> Path:
     return config.paths.interim_dir / "canonical.parquet"
 
@@ -58,10 +95,13 @@ def prepared_path(config: ExperimentConfig) -> Path:
 def ingest(config: ExperimentConfig) -> Path:
     """Run raw-to-canonical ingestion through MetDataPy."""
     ensure_directories(config)
-    df = ingest_raw_weathercloud(config.paths.raw_data_dir, config.paths.mapping_config, config.data.timezone)
-    output = canonical_path(config)
-    save_interim(df, output)
-    LOGGER.info("Saved canonical data: %s rows -> %s", len(df), output)
+    with _log_stage("ingest", project=config.project.name) as ctx:
+        df = ingest_raw_weathercloud(config.paths.raw_data_dir, config.paths.mapping_config, config.data.timezone)
+        output = canonical_path(config)
+        save_interim(df, output)
+        LOGGER.info("Saved canonical data: %s rows -> %s", len(df), output)
+        ctx["rows"] = len(df)
+        ctx["output"] = output
     return output
 
 
@@ -71,17 +111,21 @@ def preprocess(config: ExperimentConfig) -> Path:
     source = canonical_path(config)
     if not source.exists():
         raise FileNotFoundError(f"Canonical input not found: {source}. Run ingest first.")
-    df = load_interim(source)
-    prepared = preprocess_with_metdatapy(
-        df,
-        expected_frequency=config.data.expected_frequency,
-        derived_metrics=config.data.derived_metrics,
-        rolling_windows=config.data.rolling_windows,
-        resample_rule=config.data.resample_rule,
-    )
-    output = prepared_path(config)
-    save_interim(prepared, output)
-    LOGGER.info("Saved prepared data: %s rows -> %s", len(prepared), output)
+    with _log_stage("preprocess", project=config.project.name) as ctx:
+        df = load_interim(source)
+        prepared = preprocess_with_metdatapy(
+            df,
+            expected_frequency=config.data.expected_frequency,
+            derived_metrics=config.data.derived_metrics,
+            rolling_windows=config.data.rolling_windows,
+            resample_rule=config.data.resample_rule,
+        )
+        output = prepared_path(config)
+        save_interim(prepared, output)
+        LOGGER.info("Saved prepared data: %s rows -> %s", len(prepared), output)
+        ctx["rows_in"] = len(df)
+        ctx["rows_out"] = len(prepared)
+        ctx["output"] = output
     return output
 
 
@@ -92,91 +136,158 @@ def train(config: ExperimentConfig) -> pd.DataFrame:
     source = prepared_path(config)
     if not source.exists():
         raise FileNotFoundError(f"Prepared input not found: {source}. Run preprocess first.")
-    prepared = load_interim(source)
-
-    all_metrics: list[dict[str, Any]] = []
-    predictions_dir = config.paths.processed_dir / "predictions"
-    predictions_dir.mkdir(parents=True, exist_ok=True)
 
     horizons_to_train = _resolved_horizons(config)
+    _log_train_run_context(config, horizons_to_train)
 
-    for horizon_label, horizon_steps in horizons_to_train.items():
-        target_col = target_column_name(config.data.target, horizon_steps)
-        LOGGER.info("Preparing horizon %s (%s steps)", horizon_label, horizon_steps)
-        supervised = make_supervised_with_metdatapy(
-            prepared,
-            target=config.data.target,
-            horizons=[horizon_steps],
-            lags=config.data.lags,
-        )
-        if target_col not in supervised.columns:
-            raise ValueError(f"Expected supervised target column missing: {target_col}")
+    with _log_stage("train", project=config.project.name, horizons=len(horizons_to_train)) as train_ctx:
+        prepared = load_interim(source)
 
-        horizon_data_path = config.paths.processed_dir / f"supervised_{horizon_label}.parquet"
-        supervised.to_parquet(horizon_data_path, index=True)
+        all_metrics: list[dict[str, Any]] = []
+        predictions_dir = config.paths.processed_dir / "predictions"
+        predictions_dir.mkdir(parents=True, exist_ok=True)
 
-        splits = split_by_fraction_with_metdatapy(
-            supervised,
-            train_fraction=config.split.train,
-            validation_fraction=config.split.validation,
-        )
-        feature_columns = select_feature_columns(supervised, target_col)
-        metadata = make_split_metadata(splits, target_col, feature_columns)
-        save_split_metadata(metadata, config.paths.processed_dir / f"split_metadata_{horizon_label}.json")
+        for horizon_label, horizon_steps in horizons_to_train.items():
+            target_col = target_column_name(config.data.target, horizon_steps)
+            with _log_stage(
+                f"horizon {horizon_label}",
+                steps=horizon_steps,
+                target=target_col,
+            ) as horizon_ctx:
+                with _log_stage(f"build supervised {horizon_label}", target=target_col) as build_ctx:
+                    supervised = make_supervised_with_metdatapy(
+                        prepared,
+                        target=config.data.target,
+                        horizons=[horizon_steps],
+                        lags=config.data.lags,
+                    )
+                    if target_col not in supervised.columns:
+                        raise ValueError(f"Expected supervised target column missing: {target_col}")
+                    horizon_data_path = config.paths.processed_dir / f"supervised_{horizon_label}.parquet"
+                    supervised.to_parquet(horizon_data_path, index=True)
+                    build_ctx["rows"] = len(supervised)
+                    build_ctx["columns"] = len(supervised.columns)
+                    build_ctx["output"] = horizon_data_path
 
-        scaled_splits, scaler = fit_apply_scaler_with_metdatapy(splits, feature_columns, config.scaling.method)
-        # Persist the fitted scaler object directly so downstream tooling can
-        # reload it for inference; the previous indirection only stored repr().
-        joblib.dump(scaler, config.paths.artifacts_dir / "scalers" / f"scaler_{horizon_label}.joblib")
+                with _log_stage(f"split {horizon_label}") as split_ctx:
+                    splits = split_by_fraction_with_metdatapy(
+                        supervised,
+                        train_fraction=config.split.train,
+                        validation_fraction=config.split.validation,
+                    )
+                    feature_columns = select_feature_columns(supervised, target_col)
+                    split_metadata = make_split_metadata(splits, target_col, feature_columns)
+                    save_split_metadata(
+                        split_metadata,
+                        config.paths.processed_dir / f"split_metadata_{horizon_label}.json",
+                    )
+                    split_ctx["train"] = len(splits["train"])
+                    split_ctx["val"] = len(splits["val"])
+                    split_ctx["test"] = len(splits["test"])
+                    split_ctx["features"] = len(feature_columns)
 
-        # The target is intentionally kept unscaled in scaled_splits so baseline
-        # and ML models predict directly in original units. DL models train far
-        # better on a standardised target, so a separate target scaler is fit
-        # on the training partition only and persisted for inference.
-        target_scaler = fit_target_scaler_with_metdatapy(splits["train"], target_col, config.scaling.method)
-        joblib.dump(
-            target_scaler,
-            config.paths.artifacts_dir / "scalers" / f"target_scaler_{horizon_label}.joblib",
-        )
+                with _log_stage(f"fit feature scaler {horizon_label}", method=config.scaling.method):
+                    scaled_splits, scaler = fit_apply_scaler_with_metdatapy(
+                        splits, feature_columns, config.scaling.method
+                    )
+                    # Persist the fitted scaler object directly so downstream tooling can
+                    # reload it for inference; the previous indirection only stored repr().
+                    joblib.dump(
+                        scaler,
+                        config.paths.artifacts_dir / "scalers" / f"scaler_{horizon_label}.joblib",
+                    )
 
-        x_train, y_train = arrays_from_split(scaled_splits["train"], feature_columns, target_col)
-        x_test, y_test = arrays_from_split(scaled_splits["test"], feature_columns, target_col)
+                with _log_stage(f"fit target scaler {horizon_label}", method=config.scaling.method):
+                    # The target is intentionally kept unscaled in scaled_splits so baseline
+                    # and ML models predict directly in original units. DL models train far
+                    # better on a standardised target, so a separate target scaler is fit
+                    # on the training partition only and persisted for inference.
+                    target_scaler = fit_target_scaler_with_metdatapy(
+                        splits["train"], target_col, config.scaling.method
+                    )
+                    joblib.dump(
+                        target_scaler,
+                        config.paths.artifacts_dir / "scalers" / f"target_scaler_{horizon_label}.joblib",
+                    )
 
-        for model_name in config.models.baselines:
-            model = make_baseline(model_name, target=config.data.target).fit(splits["train"], target_col)
-            y_pred = model.predict(splits["test"])
-            all_metrics.append(
-                _record_result(config, horizon_label, horizon_steps, model_name, "baseline", y_test, y_pred)
-            )
-            _save_predictions(predictions_dir, horizon_label, model_name, y_test, y_pred, splits["test"].index)
-            _save_baseline_artifact(config, horizon_label, model_name, model)
+                x_train, y_train = arrays_from_split(scaled_splits["train"], feature_columns, target_col)
+                x_test, y_test = arrays_from_split(scaled_splits["test"], feature_columns, target_col)
 
-        for model_name in config.models.ml:
-            model = make_ml_model(model_name, config.project.random_seed)
-            model.fit(x_train, y_train)
-            y_pred = model.predict(x_test).astype(np.float32)
-            all_metrics.append(_record_result(config, horizon_label, horizon_steps, model_name, "ml", y_test, y_pred))
-            _save_predictions(predictions_dir, horizon_label, model_name, y_test, y_pred, splits["test"].index)
-            joblib.dump(model, config.paths.artifacts_dir / "models" / f"{model_name}_{horizon_label}.joblib")
+                horizon_models = 0
+                for model_name in config.models.baselines:
+                    with _log_stage(
+                        "train model",
+                        family="baseline",
+                        model=model_name,
+                        horizon=horizon_label,
+                    ) as model_ctx:
+                        model = make_baseline(model_name, target=config.data.target).fit(
+                            splits["train"], target_col
+                        )
+                        y_pred = model.predict(splits["test"])
+                        result = _record_result(
+                            config, horizon_label, horizon_steps, model_name, "baseline", y_test, y_pred
+                        )
+                        all_metrics.append(result)
+                        _save_predictions(
+                            predictions_dir, horizon_label, model_name, y_test, y_pred, splits["test"].index
+                        )
+                        _save_baseline_artifact(config, horizon_label, model_name, model)
+                        model_ctx["mae"] = result.get("mae")
+                        model_ctx["rmse"] = result.get("rmse")
+                    horizon_models += 1
 
-        for model_name in config.models.dl:
-            dl_metrics = _train_dl_if_possible(
-                config,
-                model_name,
-                horizon_label,
-                horizon_steps,
-                scaled_splits,
-                feature_columns,
-                target_col,
-                y_test,
-                predictions_dir,
-                target_scaler,
-            )
-            all_metrics.extend(dl_metrics)
+                for model_name in config.models.ml:
+                    with _log_stage(
+                        "train model",
+                        family="ml",
+                        model=model_name,
+                        horizon=horizon_label,
+                        n_train=len(x_train),
+                        n_features=x_train.shape[1] if x_train.ndim == 2 else len(feature_columns),
+                    ) as model_ctx:
+                        model = make_ml_model(model_name, config.project.random_seed)
+                        model.fit(x_train, y_train)
+                        y_pred = model.predict(x_test).astype(np.float32)
+                        result = _record_result(
+                            config, horizon_label, horizon_steps, model_name, "ml", y_test, y_pred
+                        )
+                        all_metrics.append(result)
+                        _save_predictions(
+                            predictions_dir, horizon_label, model_name, y_test, y_pred, splits["test"].index
+                        )
+                        joblib.dump(
+                            model,
+                            config.paths.artifacts_dir / "models" / f"{model_name}_{horizon_label}.joblib",
+                        )
+                        model_ctx["mae"] = result.get("mae")
+                        model_ctx["rmse"] = result.get("rmse")
+                    horizon_models += 1
 
-    metrics_df = pd.DataFrame(all_metrics)
-    metrics_df = _attach_persistence_skill_score(metrics_df)
-    _write_metrics_and_plots(config, metrics_df)
+                for model_name in config.models.dl:
+                    dl_metrics = _train_dl_if_possible(
+                        config,
+                        model_name,
+                        horizon_label,
+                        horizon_steps,
+                        scaled_splits,
+                        feature_columns,
+                        target_col,
+                        y_test,
+                        predictions_dir,
+                        target_scaler,
+                    )
+                    all_metrics.extend(dl_metrics)
+                    horizon_models += 1 if dl_metrics else 0
+
+                horizon_ctx["models_trained"] = horizon_models
+
+        with _log_stage("write metrics and plots"):
+            metrics_df = pd.DataFrame(all_metrics)
+            metrics_df = _attach_persistence_skill_score(metrics_df)
+            _write_metrics_and_plots(config, metrics_df)
+
+        train_ctx["models_trained"] = len(metrics_df)
     return metrics_df
 
 
@@ -185,20 +296,37 @@ def evaluate(config: ExperimentConfig) -> pd.DataFrame:
     metrics_csv = config.paths.artifacts_dir / "metrics" / "metrics.csv"
     if not metrics_csv.exists():
         raise FileNotFoundError(f"Metrics file not found: {metrics_csv}. Run train first.")
-    metrics_df = pd.read_csv(metrics_csv)
-    if "skill_score_persistence" not in metrics_df.columns:
-        metrics_df = _attach_persistence_skill_score(metrics_df)
-    _write_metrics_and_plots(config, metrics_df)
+    with _log_stage("evaluate", project=config.project.name, source=metrics_csv) as ctx:
+        metrics_df = pd.read_csv(metrics_csv)
+        if "skill_score_persistence" not in metrics_df.columns:
+            metrics_df = _attach_persistence_skill_score(metrics_df)
+        _write_metrics_and_plots(config, metrics_df)
+        ctx["rows"] = len(metrics_df)
     return metrics_df
 
 
 def run_all(config: ExperimentConfig) -> pd.DataFrame:
     """Run ingest, preprocess, train, and evaluate."""
-    ingest(config)
-    preprocess(config)
-    metrics = train(config)
-    evaluate(config)
+    with _log_stage("run-all", project=config.project.name):
+        ingest(config)
+        preprocess(config)
+        metrics = train(config)
+        evaluate(config)
     return metrics
+
+
+def _log_train_run_context(config: ExperimentConfig, horizons: dict[str, int]) -> None:
+    """Log resolved horizons and configured model families before training starts."""
+    horizon_summary = ", ".join(f"{label}={steps}" for label, steps in horizons.items())
+    LOGGER.info(
+        "Train context: project=%s target=%s horizons=[%s] baselines=%s ml=%s dl=%s",
+        config.project.name,
+        config.data.target,
+        horizon_summary,
+        list(config.models.baselines),
+        list(config.models.ml),
+        list(config.models.dl),
+    )
 
 
 def _attach_persistence_skill_score(metrics_df: pd.DataFrame) -> pd.DataFrame:
@@ -260,7 +388,8 @@ def _train_dl_if_possible(
 ) -> list[dict[str, Any]]:
     if len(scaled_splits["train"]) < config.training.min_dl_train_rows:
         LOGGER.warning(
-            "Skipping %s for %s: train rows (%s) below min_dl_train_rows (%s)",
+            "Skip model: family=dl model=%s horizon=%s reason=min_dl_train_rows "
+            "train_rows=%s min_dl_train_rows=%s",
             model_name,
             horizon_label,
             len(scaled_splits["train"]),
@@ -276,46 +405,69 @@ def _train_dl_if_possible(
         scaled_splits["test"], feature_columns, target_col, config.data.sequence_length
     )
     if len(x_train) == 0 or len(x_val) == 0 or len(x_test) == 0:
-        LOGGER.warning("Skipping %s for %s: insufficient rows after sequence construction", model_name, horizon_label)
+        LOGGER.warning(
+            "Skip model: family=dl model=%s horizon=%s reason=insufficient_sequences "
+            "train_seq=%s val_seq=%s test_seq=%s sequence_length=%s",
+            model_name,
+            horizon_label,
+            len(x_train),
+            len(x_val),
+            len(x_test),
+            config.data.sequence_length,
+        )
         return []
 
-    # Train the recurrent/TCN regressor on a standardised target so the loss
-    # surface does not depend on the absolute magnitude of temp_c. Predictions
-    # are inverse-transformed back to original units before metric computation
-    # so DL results stay directly comparable with baseline and ML models.
-    y_train_scaled = transform_target_with_metdatapy(y_train, target_scaler, target_col).astype(np.float32)
-    y_val_scaled = transform_target_with_metdatapy(y_val, target_scaler, target_col).astype(np.float32)
-
-    model = make_dl_model(
-        model_name, input_size=len(feature_columns), sequence_length=config.data.sequence_length
-    )
-    result = train_dl_model(
-        model,
-        x_train,
-        y_train_scaled,
-        x_val,
-        y_val_scaled,
+    with _log_stage(
+        "train model",
+        family="dl",
+        model=model_name,
+        horizon=horizon_label,
+        train_seq=len(x_train),
+        val_seq=len(x_val),
+        sequence_length=config.data.sequence_length,
         max_epochs=config.training.max_epochs,
-        batch_size=config.training.batch_size,
-        learning_rate=config.training.learning_rate,
-        patience=config.training.patience,
-        seed=config.project.random_seed,
-    )
-    y_pred_scaled = predict_dl_model(result.model, x_test, batch_size=config.training.batch_size)
-    y_pred = inverse_transform_target_with_metdatapy(y_pred_scaled, target_scaler, target_col).astype(np.float32)
-    save_torch_model(result.model, config.paths.artifacts_dir / "models" / f"{model_name}_{horizon_label}.pt")
-    _save_predictions(
-        predictions_dir,
-        horizon_label,
-        model_name,
-        y_test_orig,
-        y_pred,
-        scaled_splits["test"].index[-len(y_test_orig) :],
-    )
-    row = _record_result(config, horizon_label, horizon_steps, model_name, "dl", y_test_orig, y_pred)
-    row["best_validation_loss"] = result.best_validation_loss
-    row["epochs_trained"] = result.epochs_trained
-    row["tabular_test_rows"] = len(y_test_tabular)
+    ) as model_ctx:
+        # Train the recurrent/TCN regressor on a standardised target so the loss
+        # surface does not depend on the absolute magnitude of temp_c. Predictions
+        # are inverse-transformed back to original units before metric computation
+        # so DL results stay directly comparable with baseline and ML models.
+        y_train_scaled = transform_target_with_metdatapy(y_train, target_scaler, target_col).astype(np.float32)
+        y_val_scaled = transform_target_with_metdatapy(y_val, target_scaler, target_col).astype(np.float32)
+
+        model = make_dl_model(
+            model_name, input_size=len(feature_columns), sequence_length=config.data.sequence_length
+        )
+        result = train_dl_model(
+            model,
+            x_train,
+            y_train_scaled,
+            x_val,
+            y_val_scaled,
+            max_epochs=config.training.max_epochs,
+            batch_size=config.training.batch_size,
+            learning_rate=config.training.learning_rate,
+            patience=config.training.patience,
+            seed=config.project.random_seed,
+        )
+        y_pred_scaled = predict_dl_model(result.model, x_test, batch_size=config.training.batch_size)
+        y_pred = inverse_transform_target_with_metdatapy(y_pred_scaled, target_scaler, target_col).astype(np.float32)
+        save_torch_model(result.model, config.paths.artifacts_dir / "models" / f"{model_name}_{horizon_label}.pt")
+        _save_predictions(
+            predictions_dir,
+            horizon_label,
+            model_name,
+            y_test_orig,
+            y_pred,
+            scaled_splits["test"].index[-len(y_test_orig) :],
+        )
+        row = _record_result(config, horizon_label, horizon_steps, model_name, "dl", y_test_orig, y_pred)
+        row["best_validation_loss"] = result.best_validation_loss
+        row["epochs_trained"] = result.epochs_trained
+        row["tabular_test_rows"] = len(y_test_tabular)
+        model_ctx["mae"] = row.get("mae")
+        model_ctx["rmse"] = row.get("rmse")
+        model_ctx["epochs_trained"] = result.epochs_trained
+        model_ctx["best_validation_loss"] = result.best_validation_loss
     return [row]
 
 

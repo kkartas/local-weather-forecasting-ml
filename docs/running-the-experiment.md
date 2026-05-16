@@ -131,6 +131,11 @@ Each model is trained independently for each horizon. The run can take significa
 
 Deep-learning models are skipped for a horizon if the training split has fewer rows than `training.min_dl_train_rows`.
 
+The CLI emits ISO-8601 UTC timestamped logs for every stage, horizon, and
+model fit. Look for `Stage start: ...`, `Stage finish: ... elapsed=<seconds>s ...`,
+`Train context: ...`, and `Skip model: ...` lines to follow progress on
+long runs. See `docs/training.md` for the full message catalogue.
+
 ## 7. Generate Reports And Plots
 
 Regenerate reports and plots from saved metrics:
