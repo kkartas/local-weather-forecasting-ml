@@ -41,8 +41,9 @@ Current test coverage includes:
 - train-only scaler fitting
 - MAE, RMSE, and safe MAPE
 - baseline, ML, and DL smoke paths
-- leakage regressions: QC and `gap` flags must not leak into the model
-  feature set; sequence builder must use only past observations
+- leakage regressions: causal QC flags may be used as model features, `gap`
+  flags must not leak into the model feature set, and sequence builder must
+  use only past observations
   (`tests/test_leakage.py`)
 - end-to-end CLI smoke run with optional-horizon training and reloadable
   scaler artifact (`tests/test_pipeline_artifacts.py`)

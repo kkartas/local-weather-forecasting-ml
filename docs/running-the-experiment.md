@@ -52,6 +52,10 @@ If your Weathercloud export uses different column names, update:
 configs/weathercloud_mapping.yaml
 ```
 
+The default mapping is configured for Weathercloud short headers such as
+`temp (°C)`, `hum (%)`, `wspdavg (km/h)`, `wspdhi (km/h)`, `wdiravg (°)`,
+`bar (hPa)`, `rainrate (mm/h)`, `solarrad (W/m²)`, and `uvi`.
+
 Keep the experiment observation-only: do not add NWP outputs, external forecast products, or data from other stations.
 
 ## 3. Run A Smoke Check
@@ -84,7 +88,11 @@ Inspect the row count and date range:
 python -c "import pandas as pd; df = pd.read_parquet('data/interim/canonical.parquet'); print(len(df)); print(df.index.min()); print(df.index.max())"
 ```
 
-If ingestion fails around daylight-saving transition timestamps for `Europe/Athens`, resolve that before continuing. The known DST risk is tracked in `METDATAPY.md`.
+If full-year `Europe/Athens` exports contain nonexistent or ambiguous local
+daylight-saving timestamps, the adapter retries ingestion and drops only the
+rows that cannot be localized deterministically. Review the log for the
+dropped-row count and mention it as a data-cleaning detail if any rows are
+removed in the final experiment.
 
 If duplicate timestamps are logged, the current adapter keeps the first row for each duplicated timestamp. Review overlapping CSV exports if the duplicate count is unexpectedly high.
 
@@ -174,7 +182,11 @@ If it shows `smoke_weather_forecasting_pipeline`, the artifacts are from the smo
 
 ### Ingestion Fails On DST Timestamps
 
-Full-year `Europe/Athens` Weathercloud exports can include daylight-saving transition hours. If ingestion fails on nonexistent or ambiguous local timestamps, pause the experiment and resolve the MetDataPy timestamp-normalization issue or document a data-cleaning decision in the methodology.
+Full-year `Europe/Athens` Weathercloud exports can include daylight-saving
+transition hours. The pipeline uses MetDataPy 1.3.0's deterministic DST
+localization policy: nonexistent spring-forward labels are shifted forward and
+ambiguous fall-back labels use the standard-time side. If ingestion still
+fails, inspect the raw timestamp column and `configs/weathercloud_mapping.yaml`.
 
 ### Column Names Do Not Match
 

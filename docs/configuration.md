@@ -107,10 +107,10 @@ Example:
 ```yaml
 fields:
   temp_c:
-    col: Temperature (°C)
+    col: temp (°C)
     unit: C
   wspd_ms:
-    col: Wind Speed (km/h)
+    col: wspdavg (km/h)
     unit: km/h
 ```
 

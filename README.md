@@ -56,7 +56,7 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-The project requires `metdatapy>=1.2.0` for Weathercloud ingestion and meteorological time-series preparation.
+The project requires `metdatapy>=1.3.0` for Weathercloud ingestion and meteorological time-series preparation.
 
 The `pip install -e .` step is required for the `python -m weather_forecasting_pipeline ...` CLI to resolve the package. If you only need to run the test suite you can skip it: `pyproject.toml` adds `src/` to `pythonpath` so `python -m pytest` works from a plain checkout.
 

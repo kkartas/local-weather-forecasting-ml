@@ -4,7 +4,7 @@
 
 - Python 3.10 or newer
 - Python 3.11 recommended
-- `metdatapy>=1.2.0`
+- `metdatapy>=1.3.0`
 - raw Weathercloud CSV exports in `data/raw/`
 
 ## Install
@@ -26,7 +26,7 @@ python -m pytest
 Expected result:
 
 ```text
-23 passed
+26 passed
 ```
 
 ## Run A Smoke Experiment
