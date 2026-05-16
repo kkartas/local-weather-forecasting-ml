@@ -100,6 +100,8 @@ The configuration controls paths, target variable, forecast horizons, lags, roll
 
 ## Usage
 
+For a step-by-step workflow from multi-year Weathercloud exports to dissertation-ready outputs, see `docs/running-the-experiment.md`.
+
 Run the full pipeline:
 
 ```powershell

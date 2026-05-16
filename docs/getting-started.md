@@ -26,7 +26,7 @@ python -m pytest
 Expected result:
 
 ```text
-11 passed
+23 passed
 ```
 
 ## Run A Smoke Experiment
@@ -44,3 +44,7 @@ python -m weather_forecasting_pipeline run-all --config configs/default.yaml
 ```
 
 Outputs are written under `data/interim/`, `data/processed/`, and `artifacts/`.
+
+For the full multi-year dissertation workflow, including data placement,
+ingestion checks, default training, and output review, see
+`running-the-experiment.md`.

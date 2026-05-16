@@ -16,6 +16,7 @@ The project is designed for reproducible experiments. It ingests raw Weatherclou
 ## Documentation Map
 
 - [Getting Started](getting-started.md)
+- [Running The Experiment](running-the-experiment.md)
 - [Configuration](configuration.md)
 - [Pipeline Overview](pipeline-overview.md)
 - [Data Ingestion](data-ingestion.md)
