@@ -42,17 +42,11 @@ MetDataPy applies non-destructive QC flags:
 
 Suspicious values are flagged. Rows are not dropped at this stage.
 
-> **Leakage caveat:** MetDataPy 1.2.0 implements `qc_spike` and `qc_flatline`
-> with `pandas.Series.rolling(..., center=True)`, so the resulting flag at row
-> `t` depends on a few observations after `t`. To keep the strict
-> "no future information in features" rule, the forecasting layer excludes
-> every column whose name starts with `qc_` (and the deterministic `gap`
-> indicator) from the model feature set in
-> `weather_forecasting_pipeline.datasets.splits.select_feature_columns`. The
-> exclusion is enforced by
-> `tests/test_leakage.py::test_select_feature_columns_excludes_qc_and_gap_flags`.
-> A causal-window option in MetDataPy is tracked in `METDATAPY.md` so this
-> local exclusion can be removed once it lands upstream.
+Spike and flatline checks use MetDataPy's causal QC mode, so each QC flag at
+forecast origin `t` depends only on observations available at or before `t`.
+The resulting `qc_*` columns may be used as model features without future-data
+leakage. The deterministic `gap` marker from missing timestamp insertion is
+still excluded from model features.
 
 ### Derived Meteorological Features
 

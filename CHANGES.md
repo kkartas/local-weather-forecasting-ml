@@ -4,6 +4,34 @@ This file records divergences between the written dissertation methodology and t
 
 Use this file only for changes affecting methodology, experimental design, or scientific assumptions. General implementation notes and missing MetDataPy features belong elsewhere.
 
+## 2026-05-16 - MetDataPy 1.3.0 ingestion and causal QC migration
+
+- Affected component:
+  `weather_forecasting_pipeline.metdatapy_adapter`,
+  `weather_forecasting_pipeline.datasets.splits`,
+  `requirements.txt`, `pyproject.toml`.
+- What changed:
+  The project now requires `metdatapy>=1.3.0`. Ingestion uses MetDataPy's
+  official DST localization options (`nonexistent="shift_forward"`,
+  `ambiguous=False`), duplicate timestamp policy/reporting, and UTF-16LE
+  no-BOM detection. Preprocessing calls causal QC windows for spike and
+  flatline checks, and QC flag columns are now eligible model features. The
+  split helper now delegates fraction-based chronological splitting to
+  MetDataPy. A narrow local CSV parser fallback remains only for Weathercloud
+  rows with surplus trailing empty fields.
+- Why it changed:
+  MetDataPy 1.3.0 implements several features previously tracked as upstream
+  blockers in `METDATAPY.md`, allowing the forecasting repository to remove
+  local DST and split orchestration logic and to use leakage-safe QC flags.
+- Methodology impact:
+  The observation-only scope, target, horizons, splits, and metrics are
+  unchanged. QC flags may now be used as model inputs because they are computed
+  with causal windows. Metrics should be regenerated because the feature set
+  changes versus earlier QC-excluding runs.
+- Dissertation update required:
+  Yes, update the methodology to note MetDataPy 1.3.0, deterministic DST
+  localization, duplicate handling, causal QC flags, and QC feature inclusion.
+
 ## 2026-05-08 - Climatology baseline added
 
 - Affected component:
@@ -89,6 +117,10 @@ Use this file only for changes affecting methodology, experimental design, or sc
   Mention DL dropout rate where the network architectures are described.
 
 ## 2026-05-05 - QC flag columns excluded from model feature set
+
+Superseded by the 2026-05-16 MetDataPy 1.3.0 migration above. QC flags were
+excluded while MetDataPy only exposed centered spike/flatline windows; they are
+eligible features again now that causal QC windows are used.
 
 - Affected component:
   Feature selection in `weather_forecasting_pipeline.datasets.splits.select_feature_columns`.

@@ -69,16 +69,12 @@ Feature columns are selected from numeric columns while excluding:
 
 - the current horizon target column
 - all other future target columns containing `_t+`
-- every column whose name starts with `qc_` (MetDataPy QC flag columns)
 - the deterministic `gap` indicator from `WeatherSet.insert_missing`
 
-The first two exclusions prevent future target leakage. The QC and `gap`
-exclusions are required because MetDataPy 1.2.0 computes `qc_spike` and
-`qc_flatline` with centered rolling windows; using those flags as model
-features would let each row see a small number of future observations.
-The exclusion is enforced by
-`tests/test_leakage.py::test_select_feature_columns_excludes_qc_and_gap_flags`,
-and a causal-window option in MetDataPy is tracked in `METDATAPY.md`.
+The target-column exclusions prevent future target leakage. MetDataPy causal
+QC flags (`qc_*`) are allowed as model features because spike and flatline
+checks are computed with past-only windows. The `gap` marker remains excluded
+so inserted missing-timestamp rows do not become an explicit model signal.
 
 ## Chronological Split
 
@@ -91,7 +87,7 @@ split:
   test: 0.15
 ```
 
-The project computes timestamp boundaries from these fractions and delegates boundary splitting to MetDataPy.
+The project delegates fraction-based chronological splitting to MetDataPy.
 
 No random split and no shuffling are used.
 

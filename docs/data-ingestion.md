@@ -16,11 +16,14 @@ The default mapping expects:
 Date (Europe/Athens)
 ```
 
-as the local timestamp column.
+as the local timestamp column. The default field mapping is configured for
+Weathercloud's short export headers, for example `temp (°C)`, `hum (%)`,
+`wspdavg (km/h)`, `wspdhi (km/h)`, `wdiravg (°)`, `bar (hPa)`,
+`rainrate (mm/h)`, `solarrad (W/m²)`, and `uvi`.
 
 ## MetDataPy Integration
 
-The project uses MetDataPy 1.2.0 for:
+The project uses MetDataPy 1.3.0 for:
 
 - Weathercloud directory ingestion
 - CSV encoding detection
@@ -71,9 +74,19 @@ This keeps the modeling index unique. A future MetDataPy duplicate-policy API is
 
 ## Yearly CSV Files
 
-Yearly Weathercloud exports are supported as separate CSV files in `data/raw/`. MetDataPy 1.2.0 reads all CSV files in the directory, concatenates them, and sorts the canonical output chronologically.
+Yearly Weathercloud exports are supported as separate CSV files in `data/raw/`. MetDataPy 1.3.0 reads all CSV files in the directory, concatenates them, applies the configured duplicate timestamp policy, and sorts the canonical output chronologically.
 
-Before final experiments, verify ingestion on the full yearly set. Full-year local `Europe/Athens` timestamps may include daylight-saving transition hours; DST-safe timestamp handling is tracked in `METDATAPY.md`.
+Before final experiments, verify ingestion on the full yearly set. Some
+Weathercloud exports are UTF-16LE without a byte-order mark; MetDataPy 1.3.0
+detects that encoding. Some exports also contain occasional rows with one
+extra trailing empty field; if pandas raises a parser error for that case, the
+adapter retries with a header-width parser and still delegates timestamp
+normalization, mapping, and unit normalization to MetDataPy.
+
+Full-year local `Europe/Athens` timestamps may include daylight-saving
+transition hours. Ingestion uses MetDataPy's deterministic localization policy:
+nonexistent spring-forward labels are shifted forward and ambiguous fall-back
+labels use the standard-time side.
 
 ## No Raw Data Mutation
 
