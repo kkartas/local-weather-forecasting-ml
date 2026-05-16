@@ -26,7 +26,7 @@ python -m pytest
 Expected result:
 
 ```text
-26 passed
+29 passed
 ```
 
 ## Run A Smoke Experiment
