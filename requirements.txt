@@ -1,4 +1,4 @@
-metdatapy>=1.2.0
+metdatapy>=1.3.0
 numpy>=1.24,<2
 pandas>=2.0
 pyarrow>=14

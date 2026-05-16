@@ -16,13 +16,8 @@ from weather_forecasting_pipeline.metdatapy_adapter import (
 )
 
 
-def test_select_feature_columns_excludes_qc_and_gap_flags(synthetic_station_frame):
-    """QC flags and the `gap` indicator must never reach the model.
-
-    MetDataPy 1.2.0 uses centered rolling windows for qc_spike/qc_flatline,
-    which would leak a small amount of future information if those columns
-    became features.
-    """
+def test_select_feature_columns_includes_causal_qc_but_excludes_gap_flag(synthetic_station_frame):
+    """Causal QC flags can be model features, but inserted gap markers cannot."""
     prepared = preprocess_with_metdatapy(
         synthetic_station_frame,
         expected_frequency="10min",
@@ -35,8 +30,8 @@ def test_select_feature_columns_excludes_qc_and_gap_flags(synthetic_station_fram
     feature_columns = select_feature_columns(supervised, target_col)
 
     assert "gap" not in feature_columns
-    leaking = [c for c in feature_columns if c.startswith("qc_")]
-    assert leaking == [], f"QC flag columns must not be features: {leaking}"
+    qc_features = [c for c in feature_columns if c.startswith("qc_")]
+    assert qc_features, "MetDataPy causal QC flag columns should be available as features"
 
 
 def test_sequence_arrays_use_only_past_observations():
