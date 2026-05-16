@@ -4,32 +4,32 @@ ts:
   timezone: Europe/Athens
 fields:
   temp_c:
-    col: Temperature (°C)
+    col: temp (°C)
     unit: C
   rh_pct:
-    col: Humidity (%)
+    col: hum (%)
     unit: "%"
   pres_hpa:
-    col: Pressure (hPa)
+    col: bar (hPa)
     unit: hpa
   wspd_ms:
-    col: Wind Speed (km/h)
+    col: wspdavg (km/h)
     unit: km/h
   gust_ms:
-    col: Wind Gust (km/h)
+    col: wspdhi (km/h)
     unit: km/h
   wdir_deg:
-    col: Wind Direction (°)
+    col: wdiravg (°)
     unit: deg
   rain_mm:
-    col: Rain (mm)
+    col: rain (mm)
     unit: mm
   rain_rate_mmh:
-    col: Rain Rate (mm/h)
+    col: rainrate (mm/h)
     unit: mm/h
   solar_wm2:
-    col: Solar Radiation (W/m²)
+    col: solarrad (W/m²)
     unit: W/m2
   uv_index:
-    col: UV Index
+    col: uvi
     unit: index
