@@ -30,10 +30,6 @@ artifacts/reports/*
 !artifacts/plots/.gitkeep
 !artifacts/reports/.gitkeep
 
-# Synthetic Weathercloud fixture used by the smoke configuration; required
-# for offline reproduction of `configs/smoke.yaml` so it stays tracked.
-!data/raw/smoke_weathercloud.csv
-
 .env
 .DS_Store
 Thumbs.db
