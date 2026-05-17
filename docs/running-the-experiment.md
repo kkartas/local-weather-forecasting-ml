@@ -131,6 +131,53 @@ Each model is trained independently for each horizon. The run can take significa
 
 Deep-learning models are skipped for a horizon if the training split has fewer rows than `training.min_dl_train_rows`.
 
+### Memory Expectations
+
+DL training reads a narrow per-timestep feature set
+(`select_dl_feature_columns()` drops MetDataPy `_lag<n>` columns by
+default) and builds each sequence window on demand. With the default
+configuration the resident memory for DL training is dominated by the
+per-split feature matrix (a few tens of MB) plus the per-batch tensor
+(`batch_size × sequence_length × n_dl_features × 4 B`, well under one
+megabyte at default settings). The full multi-year run no longer needs
+80 GiB of RAM to train DL models. Tabular ML and baselines continue to
+use the wide ~1.6k feature matrix and have not changed.
+
+Set `data.dl_exclude_lag_features: false` in YAML to retain the legacy
+wide DL feature set; expect RAM usage to scale to many GiB at the default
+`sequence_length: 144`.
+
+### Parallel Horizon Training
+
+Long full-config runs are dominated by single-threaded RBF `SVR` per
+horizon. Set `training.horizon_workers` greater than `1` to train
+multiple horizons in parallel:
+
+```yaml
+training:
+  horizon_workers: 4
+```
+
+Each worker is a separate Python process and runs the full per-horizon
+pipeline (supervised build, split, scalers, baselines, ML, DL,
+predictions, and per-horizon artifacts) end-to-end. The pool is
+capped at `min(horizon_workers, n_horizons, cpu_count)`. Recommended
+values:
+
+- `1` (default) on laptops and shared machines.
+- `2`–`4` on a 6-horizon dissertation run, depending on available
+  cores. Each worker still fits an SVR with all training rows.
+- Avoid running two parallel `train` invocations against the same
+  `artifacts/` directory at the same time; per-horizon files are
+  write-isolated by horizon label, but the merged
+  `artifacts/metrics/metrics.csv` is not.
+
+When `horizon_workers > 1`, `RandomForestRegressor` is forced to
+`n_jobs=1` to prevent outer × inner CPU oversubscription. The merged
+metrics, plots, and report are still written once on the main process
+after all workers finish, so the artifact tree is identical to a
+sequential run; only the order of completion may differ.
+
 The CLI emits ISO-8601 UTC timestamped logs for every stage, horizon, and
 model fit. Look for `Stage start: ...`, `Stage finish: ... elapsed=<seconds>s ...`,
 `Train context: ...`, and `Skip model: ...` lines to follow progress on
@@ -183,7 +230,46 @@ nea_triglia_short_term_weather_forecasting
 
 If it shows `smoke_weather_forecasting_pipeline`, the artifacts are from the smoke configuration and should not be used as dissertation results.
 
-## 10. Common Problems
+## 10. Cleaning Generated Outputs Between Runs
+
+Generated outputs live under `data/interim/`, `data/processed/`, and
+`artifacts/`. Raw Weathercloud exports under `data/raw/` are never
+removed by the pipeline. When to clean:
+
+- **Same config, fresh run** — usually no cleanup is required because
+  every per-horizon artifact path is overwritten in place. Clean only
+  when you suspect stale files (for example, after switching MetDataPy
+  versions) or when partial files from a failed run could confuse
+  inspection.
+- **Smoke → default switch** — clean before running the default config.
+  Smoke artifacts and the default artifacts share path layouts but
+  encode different horizons, so leaving smoke files in place can yield
+  a mixed `artifacts/metrics/metrics.csv` whose project name still says
+  `smoke_weather_forecasting_pipeline` while horizon rows differ.
+- **After a partial / failed run** — clean before retrying so previously
+  written rows or model files cannot mask a true regression. The
+  pipeline writes per-horizon artifacts as it goes; a crash mid-horizon
+  leaves outputs from the failure visible alongside earlier successes.
+- **Mixed-config debugging** — clean before benchmarking parallel vs
+  sequential runs against each other so a slower run never overwrites a
+  partial faster one.
+
+The CLI has two cleanup helpers:
+
+```powershell
+# remove generated outputs only
+python -m weather_forecasting_pipeline clean --config configs/default.yaml
+
+# clean and run-all in one step
+python -m weather_forecasting_pipeline run-all --config configs/default.yaml --fresh
+```
+
+`--fresh` is also valid on `train`. Both forms only delete paths
+configured in the YAML (`paths.interim_dir`, `paths.processed_dir`, and
+the `models/`, `scalers/`, `metrics/`, `plots/`, `reports/` subtrees of
+`paths.artifacts_dir`). The raw data directory is never touched.
+
+## 11. Common Problems
 
 ### Ingestion Fails On DST Timestamps
 

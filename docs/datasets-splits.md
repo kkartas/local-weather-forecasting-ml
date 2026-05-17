@@ -76,6 +76,45 @@ QC flags (`qc_*`) are allowed as model features because spike and flatline
 checks are computed with past-only windows. The `gap` marker remains excluded
 so inserted missing-timestamp rows do not become an explicit model signal.
 
+### Tabular Feature Set (ML and Baselines)
+
+`select_feature_columns()` produces the wide tabular feature set used by
+ML and baseline models. With the default configuration it returns roughly
+1.6k columns: canonical variables, derived metrics, calendar cyclic
+features, wind-direction encoding, the rolling-mean/std/min/max windows,
+causal QC flags, and the full `<col>_lag<n>` matrix.
+
+### DL Feature Set
+
+DL sequence models receive a narrower per-timestep feature set produced
+by `select_dl_feature_columns()`. By default this drops every
+`<col>_lag<n>` column because the sequence axis already encodes the same
+recent history. With the default configuration this drops the DL feature
+count from ~1.6k to roughly 50 per-timestep signals and is what makes
+the multi-year DL run memory-feasible. Configure the policy via
+`data.dl_exclude_lag_features` (default `true`) and the optional
+`data.dl_feature_columns` allow-list (see `docs/configuration.md`).
+
+### Sequence Construction
+
+Two sequence helpers live in
+`weather_forecasting_pipeline.datasets.splits`:
+
+- `sequence_arrays_from_split(split, feature_columns, target_col,
+  sequence_length)` materializes a dense
+  `(n_sequences, sequence_length, n_features)` tensor and is suited for
+  small fixtures and unit tests only.
+- `SequenceDataset` plus `build_sequence_dataset()` keep the per-timestep
+  feature matrix once and build each window on demand inside the PyTorch
+  `DataLoader`. This is the path used by the training pipeline so DL
+  fits stay memory-safe on the full multi-year configuration.
+
+Both helpers preserve the same chronological semantics: a sequence at
+forecast origin `t` ends at row `t` (no future information) and is paired
+with the already-shifted target at `t+h`. `sequence_targets()` is a
+helper that aligns a precomputed 1-D target array to sequence end
+positions.
+
 ## Chronological Split
 
 The split is chronological:

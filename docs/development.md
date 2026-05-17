@@ -53,6 +53,17 @@ Current test coverage includes:
 - climatology baseline correctness, persistence skill score behavior,
   TCN receptive-field sizing, and target-scaler round-trip
   (`tests/test_baselines_and_metrics.py`)
+- DL feature selection drops `_lag<n>` columns and the lazy
+  `SequenceDataset` builds windows on demand without allocating the
+  dense `(n_sequences, sequence_length, n_features)` tensor
+  (`tests/test_datasets.py`, `tests/test_models.py`)
+- parallel horizon training: two horizons on a tiny fixture run end to
+  end through `ProcessPoolExecutor` and produce a merged
+  `metrics.csv` with the same rows as the sequential run
+  (`tests/test_parallel_horizons.py`)
+- artifact cleanup: `clean` subcommand and `--fresh` flag remove only
+  generated outputs and leave raw data intact
+  (`tests/test_pipeline_artifacts.py`)
 
 ## Continuous Integration
 

@@ -117,6 +117,16 @@ python -m weather_forecasting_pipeline train --config configs/default.yaml
 python -m weather_forecasting_pipeline evaluate --config configs/default.yaml
 ```
 
+Clean previously-generated outputs (`data/interim/`, `data/processed/`, and the `artifacts/` subtrees) without removing raw data:
+
+```powershell
+python -m weather_forecasting_pipeline clean --config configs/default.yaml
+# or, in one step:
+python -m weather_forecasting_pipeline run-all --config configs/default.yaml --fresh
+```
+
+Train horizons in parallel by setting `training.horizon_workers` in the YAML config (default `1` keeps the current sequential behaviour). See `docs/training.md` for details.
+
 Run the smaller smoke configuration:
 
 ```powershell

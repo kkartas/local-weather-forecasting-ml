@@ -41,11 +41,31 @@ data:
   rolling_windows: [6, 18, 36, 144]
   sequence_length: 144
   derived_metrics: [dew_point, vpd, heat_index, wind_chill]
+  dl_exclude_lag_features: true
 ```
 
 The source data is expected at 10-minute resolution. Horizon values are expressed in source time steps, so `6` means one hour.
 
 Both `horizons` and `optional_horizons` are trained. The `optional_horizons` block exists so contributors can keep auxiliary horizons (such as the very short `m10` and the day-ahead `h24`) syntactically separate from the headline dissertation horizons without changing the iteration policy. Entries are merged at run time, sorted by horizon length, and each `(model, horizon)` pair is trained independently. On key collision, `horizons` wins.
+
+### DL feature policy keys
+
+```yaml
+data:
+  dl_exclude_lag_features: true     # default; remove _lag<n> columns from DL inputs
+  # dl_feature_columns: [temp_c, rh_pct, ...]  # optional explicit allow-list
+```
+
+- `dl_exclude_lag_features` (default `true`) controls whether MetDataPy
+  `<col>_lag<n>` columns are excluded from per-timestep DL inputs. The
+  sequence axis already encodes recent history, so the lag matrix is
+  redundant for sequence models and explodes RAM at full resolution.
+- `dl_feature_columns` (default unset) is an optional explicit allow-list.
+  When set, the DL feature set is exactly the listed columns; when unset,
+  the policy above applies. The list is validated against the supervised
+  dataset at training time.
+- These keys affect DL only. Tabular ML and baseline models always keep
+  the wide feature set produced by `select_feature_columns()`.
 
 ## Split Settings
 
@@ -94,9 +114,24 @@ training:
   learning_rate: 0.001
   patience: 5
   min_dl_train_rows: 300
+  horizon_workers: 1
 ```
 
 Deep-learning models use early stopping based on validation loss. If the training split is too small, deep-learning models are skipped with a warning.
+
+`horizon_workers` controls process-level parallelism over forecast
+horizons:
+
+- `1` (default) preserves the strictly sequential behaviour and is the
+  safe choice on laptops or shared machines.
+- Values greater than `1` train each horizon in its own worker process.
+  The effective worker count is capped at
+  `min(horizon_workers, n_horizons, cpu_count)`, and `RandomForestRegressor`
+  is forced to `n_jobs=1` so the inner-loop sklearn parallelism does not
+  collide with the outer process pool.
+
+See `docs/training.md#parallel-horizon-training` for the wall-time and
+memory expectations.
 
 ## Weathercloud Mapping
 

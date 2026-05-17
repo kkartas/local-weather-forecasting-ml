@@ -4,6 +4,43 @@ This file records divergences between the written dissertation methodology and t
 
 Use this file only for changes affecting methodology, experimental design, or scientific assumptions. General implementation notes and missing MetDataPy features belong elsewhere.
 
+## 2026-05-18 - Deep-learning feature set excludes lag columns
+
+- Affected component:
+  `weather_forecasting_pipeline.datasets.splits.select_dl_feature_columns`,
+  `weather_forecasting_pipeline.training.pipeline._train_dl_if_possible`,
+  `configs/default.yaml`, `configs/smoke.yaml`.
+- What changed:
+  Deep-learning models now read a narrower per-timestep feature set than
+  tabular ML/baselines. By default `select_dl_feature_columns()` drops every
+  MetDataPy `<col>_lag<n>` column from DL inputs while keeping canonical
+  variables, derived metrics, calendar cyclic features, wind-direction
+  encoding, rolling stats at `t`, and causal QC flags. The DL training path
+  now uses a lazy `SequenceDataset` so windows are built on demand inside
+  the PyTorch `DataLoader` rather than being stacked into one
+  `(n_sequences, sequence_length, n_features)` tensor up front. Configurable
+  via `data.dl_exclude_lag_features` (default `true`) and the optional
+  `data.dl_feature_columns` allow-list. Tabular ML and baseline feature sets
+  are unchanged.
+- Why it changed:
+  The full multi-year run failed during DL training with
+  `numpy.core._exceptions._ArrayMemoryError` while attempting to allocate
+  ~83 GiB for the train tensor on the m10 horizon. The sequence axis already
+  encodes recent history, so feeding the wide tabular `_lag<n>` matrix at
+  every timestep adds no information while making DL training infeasible on
+  the dissertation hardware.
+- Methodology impact:
+  DL numbers will differ from any prior wide-feature DL attempts because
+  the per-timestep feature vector is narrower. Tabular ML and baseline
+  metrics are unaffected because their feature set has not changed. No prior
+  DL run had successfully completed on the full configuration, so previous
+  partial DL numbers were not used as dissertation references; the first
+  full DL results are the ones produced under this new feature policy.
+- Dissertation update required:
+  Yes. Document the DL feature selection rule (lags excluded; per-timestep
+  features only), the lazy `SequenceDataset` loading path, and the
+  resulting RAM expectations in the methodology chapter.
+
 ## 2026-05-16 - MetDataPy 1.3.0 ingestion and causal QC migration
 
 - Affected component:
