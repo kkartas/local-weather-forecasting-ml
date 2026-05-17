@@ -2,13 +2,24 @@ from __future__ import annotations
 
 import numpy as np
 
-from weather_forecasting_pipeline.datasets.splits import arrays_from_split, select_feature_columns, target_column_name
+from weather_forecasting_pipeline.datasets.splits import (
+    SequenceDataset,
+    arrays_from_split,
+    select_feature_columns,
+    target_column_name,
+)
 from weather_forecasting_pipeline.metdatapy_adapter import (
     make_supervised_with_metdatapy,
     split_by_fraction_with_metdatapy,
 )
 from weather_forecasting_pipeline.models.baselines import make_baseline
-from weather_forecasting_pipeline.models.dl_models import make_dl_model, predict_dl_model, train_dl_model
+from weather_forecasting_pipeline.models.dl_models import (
+    make_dl_model,
+    predict_dl_model,
+    predict_dl_model_from_dataset,
+    train_dl_model,
+    train_dl_model_from_datasets,
+)
 from weather_forecasting_pipeline.models.ml_models import make_ml_model
 
 
@@ -52,4 +63,41 @@ def test_dl_model_smoke():
     )
     pred = predict_dl_model(result.model, x_val, batch_size=4)
     assert pred.shape == y_val.shape
+    assert result.epochs_trained >= 1
+
+
+def test_dl_model_lazy_dataset_path_smoke():
+    """End-to-end lazy DL path must train on ``SequenceDataset`` inputs.
+
+    The training pipeline now feeds the recurrent/TCN regressors through
+    ``train_dl_model_from_datasets`` so the full ``(n_sequences, sequence_length,
+    n_features)`` tensor is never materialized. This smoke test exercises the
+    same call path with a tiny fixture so regressions in that contract are
+    caught without a multi-GiB allocation.
+    """
+    rng = np.random.default_rng(7)
+    n_rows = 60
+    n_features = 4
+    sequence_length = 6
+    train_features = rng.normal(size=(n_rows, n_features)).astype(np.float32)
+    val_features = rng.normal(size=(n_rows // 2, n_features)).astype(np.float32)
+    train_targets = train_features[:, 0] * 0.5
+    val_targets = val_features[:, 0] * 0.5
+
+    train_ds = SequenceDataset(train_features, train_targets.astype(np.float32), sequence_length)
+    val_ds = SequenceDataset(val_features, val_targets.astype(np.float32), sequence_length)
+
+    model = make_dl_model("gru", input_size=n_features, sequence_length=sequence_length)
+    result = train_dl_model_from_datasets(
+        model,
+        train_ds,
+        val_ds,
+        max_epochs=2,
+        batch_size=8,
+        learning_rate=0.01,
+        patience=2,
+        seed=42,
+    )
+    preds = predict_dl_model_from_dataset(result.model, val_ds, batch_size=8)
+    assert preds.shape == (len(val_ds),)
     assert result.epochs_trained >= 1

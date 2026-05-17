@@ -23,6 +23,7 @@ data:
   rolling_windows: [6]
   sequence_length: 12
   derived_metrics: [dew_point, vpd, heat_index, wind_chill]
+  dl_exclude_lag_features: true
 
 split:
   train: 0.70
@@ -43,6 +44,7 @@ training:
   learning_rate: 0.001
   patience: 1
   min_dl_train_rows: 80
+  horizon_workers: 1
 
 evaluation:
   mape_epsilon: 1.0e-6

@@ -37,6 +37,12 @@ class DataConfig:
     rolling_windows: list[int]
     sequence_length: int
     derived_metrics: list[str]
+    # DL feature policy: by default the sequence axis already encodes recent
+    # history, so MetDataPy lag columns are excluded from DL inputs. Set to
+    # ``False`` to retain lag columns (legacy wide DL feature set), or pass an
+    # explicit ``dl_feature_columns`` allow-list for fully transparent runs.
+    dl_exclude_lag_features: bool = True
+    dl_feature_columns: list[str] | None = None
 
 
 @dataclass(frozen=True)
@@ -65,6 +71,11 @@ class TrainingConfig:
     learning_rate: float
     patience: int
     min_dl_train_rows: int
+    # ``horizon_workers`` controls process-level parallelism over forecast
+    # horizons. ``1`` (default) preserves the strictly sequential behaviour;
+    # values greater than ``1`` train each horizon's full pipeline in its own
+    # worker process and capped at ``min(value, n_horizons, cpu_count)``.
+    horizon_workers: int = 1
 
 
 @dataclass(frozen=True)
@@ -139,6 +150,12 @@ def load_config(path: str | Path) -> ExperimentConfig:
             rolling_windows=[int(v) for v in data_raw.get("rolling_windows", [])],
             sequence_length=int(data_raw["sequence_length"]),
             derived_metrics=list(data_raw.get("derived_metrics", [])),
+            dl_exclude_lag_features=bool(data_raw.get("dl_exclude_lag_features", True)),
+            dl_feature_columns=(
+                [str(c) for c in data_raw["dl_feature_columns"]]
+                if data_raw.get("dl_feature_columns") is not None
+                else None
+            ),
         ),
         split=SplitConfig(
             train=float(split_raw["train"]),
@@ -157,6 +174,7 @@ def load_config(path: str | Path) -> ExperimentConfig:
             learning_rate=float(training_raw["learning_rate"]),
             patience=int(training_raw["patience"]),
             min_dl_train_rows=int(training_raw.get("min_dl_train_rows", 300)),
+            horizon_workers=int(training_raw.get("horizon_workers", 1)),
         ),
         evaluation=EvaluationConfig(
             mape_epsilon=float(evaluation_raw.get("mape_epsilon", 1e-6)),

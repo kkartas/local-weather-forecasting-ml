@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
 from torch import nn
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader, Dataset, TensorDataset
 
 
 class RecurrentRegressor(nn.Module):
@@ -135,12 +136,10 @@ def make_dl_model(name: str, input_size: int, sequence_length: int = 144) -> nn.
     raise ValueError(f"Unknown DL model: {name}")
 
 
-def train_dl_model(
+def train_dl_model_from_datasets(
     model: nn.Module,
-    x_train: np.ndarray,
-    y_train: np.ndarray,
-    x_val: np.ndarray,
-    y_val: np.ndarray,
+    train_dataset: Dataset,
+    val_dataset: Dataset,
     *,
     max_epochs: int,
     batch_size: int,
@@ -148,14 +147,20 @@ def train_dl_model(
     patience: int,
     seed: int,
 ) -> DLTrainingResult:
-    """Train a PyTorch sequence model with validation early stopping."""
+    """Train a PyTorch sequence model using lazy ``Dataset`` inputs.
+
+    The training and validation datasets must yield ``(x, y)`` pairs with
+    ``x`` shaped ``(sequence_length, n_features)`` and ``y`` a scalar tensor.
+    Each batch is built on demand by the underlying :class:`DataLoader` so the
+    full training tensor is never materialized in memory. Validation loss is
+    computed batch-wise as a sample-weighted MSE so the early-stopping anchor
+    matches a single-pass forward over the validation set.
+    """
     torch.manual_seed(seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
-    train_ds = TensorDataset(torch.from_numpy(x_train), torch.from_numpy(y_train))
-    val_x = torch.from_numpy(x_val).to(device)
-    val_y = torch.from_numpy(y_val).to(device)
-    loader = DataLoader(train_ds, batch_size=batch_size, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=False)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     loss_fn = nn.MSELoss()
 
@@ -167,7 +172,7 @@ def train_dl_model(
     for epoch in range(max_epochs):
         epochs_done = epoch + 1
         model.train()
-        for xb, yb in loader:
+        for xb, yb in train_loader:
             xb = xb.to(device)
             yb = yb.to(device)
             optimizer.zero_grad()
@@ -176,8 +181,18 @@ def train_dl_model(
             optimizer.step()
 
         model.eval()
+        sse = 0.0
+        count = 0
         with torch.no_grad():
-            val_loss = float(loss_fn(model(val_x), val_y).detach().cpu())
+            for xb, yb in val_loader:
+                xb = xb.to(device)
+                yb = yb.to(device)
+                preds = model(xb)
+                # Aggregate sum-of-squared-errors so the final mean matches the
+                # in-memory MSELoss the previous implementation reported.
+                sse += float(((preds - yb) ** 2).sum().item())
+                count += int(yb.numel())
+        val_loss = sse / max(count, 1)
         if val_loss < best_val:
             best_val = val_loss
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
@@ -192,14 +207,75 @@ def train_dl_model(
     return DLTrainingResult(model=model, best_validation_loss=best_val, epochs_trained=epochs_done)
 
 
+def train_dl_model(
+    model: nn.Module,
+    x_train: np.ndarray,
+    y_train: np.ndarray,
+    x_val: np.ndarray,
+    y_val: np.ndarray,
+    *,
+    max_epochs: int,
+    batch_size: int,
+    learning_rate: float,
+    patience: int,
+    seed: int,
+) -> DLTrainingResult:
+    """Train a PyTorch sequence model with validation early stopping.
+
+    Backwards-compatible wrapper that accepts pre-built ``(n, seq, feat)``
+    arrays. The training pipeline uses :func:`train_dl_model_from_datasets`
+    with on-demand sequence windows to stay memory-safe on the full
+    multi-year configuration; this helper remains for unit tests and small
+    fixtures that already hold the full tensor in memory.
+    """
+    train_ds = TensorDataset(torch.from_numpy(x_train), torch.from_numpy(y_train))
+    val_ds = TensorDataset(torch.from_numpy(x_val), torch.from_numpy(y_val))
+    return train_dl_model_from_datasets(
+        model,
+        train_ds,
+        val_ds,
+        max_epochs=max_epochs,
+        batch_size=batch_size,
+        learning_rate=learning_rate,
+        patience=patience,
+        seed=seed,
+    )
+
+
 def predict_dl_model(model: nn.Module, x: np.ndarray, batch_size: int = 256) -> np.ndarray:
-    """Run batched prediction for a trained PyTorch model."""
+    """Run batched prediction for a trained PyTorch model.
+
+    Backwards-compatible helper used by tests with pre-built tensors. The
+    pipeline uses :func:`predict_dl_model_from_dataset` so the prediction
+    path stays memory-safe for the full configuration.
+    """
     model.eval()
     preds: list[np.ndarray] = []
     loader = DataLoader(TensorDataset(torch.from_numpy(x)), batch_size=batch_size, shuffle=False)
     with torch.no_grad():
         for (xb,) in loader:
             preds.append(model(xb).detach().cpu().numpy())
+    return np.concatenate(preds).astype(np.float32)
+
+
+def predict_dl_model_from_dataset(
+    model: nn.Module, dataset: Dataset, batch_size: int = 256
+) -> np.ndarray:
+    """Run batched prediction across a lazy sequence dataset.
+
+    Iterates the dataset's ``DataLoader`` and ignores the ``y`` element of
+    each batch so the same ``(x, y)`` dataset can be used for both training
+    and inference without an extra ``x``-only wrapper.
+    """
+    model.eval()
+    preds: list[np.ndarray] = []
+    loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+    with torch.no_grad():
+        for batch in loader:
+            xb: Any = batch[0] if isinstance(batch, (list, tuple)) else batch
+            preds.append(model(xb).detach().cpu().numpy())
+    if not preds:
+        return np.empty((0,), dtype=np.float32)
     return np.concatenate(preds).astype(np.float32)
 
 
