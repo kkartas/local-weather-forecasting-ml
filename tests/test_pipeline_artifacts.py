@@ -163,3 +163,42 @@ def test_resolved_horizons_includes_optional(smoke_environment):
     _, config = smoke_environment
     resolved = _resolved_horizons(config)
     assert resolved == {"m10": 1, "h01": 6}
+
+
+def test_clean_command_removes_generated_outputs_only(smoke_environment):
+    """``clean`` must wipe interim, processed, and artifact subtrees only.
+
+    The raw data directory contains the Weathercloud exports that drive every
+    experiment, so it is intentionally outside the scope of cleanup. The clean
+    command also stays scoped to the configured paths so a misconfigured
+    artifacts directory cannot remove unrelated user files.
+    """
+    config_path, config = smoke_environment
+
+    cli_main(["run-all", "--config", str(config_path)])
+    raw_files = list(config.paths.raw_data_dir.iterdir())
+    assert raw_files, "smoke fixture must populate the raw data directory"
+
+    cli_main(["clean", "--config", str(config_path)])
+
+    assert not config.paths.interim_dir.exists()
+    assert not config.paths.processed_dir.exists()
+    assert not (config.paths.artifacts_dir / "metrics").exists()
+    # Raw inputs must remain untouched.
+    assert config.paths.raw_data_dir.exists()
+    assert sorted(p.name for p in config.paths.raw_data_dir.iterdir()) == sorted(p.name for p in raw_files)
+
+
+def test_fresh_flag_resets_outputs_before_run(smoke_environment):
+    """``--fresh`` on ``run-all`` must clear stale outputs before regenerating them."""
+    config_path, config = smoke_environment
+
+    cli_main(["run-all", "--config", str(config_path)])
+    metrics_csv = config.paths.artifacts_dir / "metrics" / "metrics.csv"
+    sentinel = config.paths.processed_dir / "leftover_from_old_run.txt"
+    sentinel.write_text("stale", encoding="utf-8")
+
+    cli_main(["run-all", "--config", str(config_path), "--fresh"])
+
+    assert metrics_csv.exists(), "metrics must be regenerated after fresh run"
+    assert not sentinel.exists(), "fresh run must drop stale processed outputs"
