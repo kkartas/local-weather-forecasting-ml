@@ -34,10 +34,12 @@ artifacts/reports/*
 .DS_Store
 Thumbs.db
 
-# Local Claude Code state (per-checkout, not part of the project).
 .[Cc][Ll][Aa][Uu][Dd][Ee]/
 [Cc][Ll][Aa][Uu][Dd][Ee].md
 AGENTS.md
 REVIEW_REPORT.md
+METDATAPY.md
+TO-DO.md
 
 paper.docx
+/docs/
