@@ -200,3 +200,12 @@ def test_train_logs_elapsed_seconds_and_mae(smoke_config, caplog):
     for line in finish_lines:
         assert elapsed_re.search(line), f"missing elapsed= field: {line}"
         assert mae_re.search(line), f"missing mae= field: {line}"
+
+
+def test_train_plan_and_counter_fields_are_logged(smoke_config, caplog):
+    with caplog.at_level(logging.INFO):
+        cli_main(["run-all", "--config", str(smoke_config), "--log-level", "INFO"])
+    messages = [r.getMessage() for r in caplog.records]
+    assert any(m.startswith("Train plan: models=") for m in messages)
+    assert any("Stage start: train model" in m and "run=" in m and "remaining=" in m for m in messages)
+    assert any("Stage finish: train model" in m and "run_completed=" in m for m in messages)

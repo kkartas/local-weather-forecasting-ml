@@ -8,6 +8,7 @@ the sequential default for both horizons.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -184,3 +185,12 @@ def test_parallel_and_sequential_metrics_match_on_small_data(tmp_path: Path):
             par_metrics[col].to_numpy(dtype=float),
             atol=1e-5,
         ), f"{col} mismatch between sequential and parallel runs"
+
+
+def test_parallel_logs_unique_global_run_slots(tmp_path: Path, caplog):
+    config_path = _write_environment(tmp_path, horizon_workers=2)
+    with caplog.at_level(logging.INFO):
+        cli_main(["run-all", "--config", str(config_path), "--log-level", "INFO"])
+    starts = [r.getMessage() for r in caplog.records if "Stage start: train model" in r.getMessage() and "run=" in r.getMessage()]
+    run_values = sorted({int(line.split("run=")[1].split("/")[0]) for line in starts})
+    assert run_values == list(range(1, max(run_values) + 1))

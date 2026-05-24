@@ -50,6 +50,10 @@ from weather_forecasting_pipeline.models.dl_models import (
     train_dl_model_from_datasets,
 )
 from weather_forecasting_pipeline.models.ml_models import make_ml_model
+from weather_forecasting_pipeline.training.progress import (
+    SharedTrainingProgressTracker,
+    TrainingProgressTracker,
+)
 from weather_forecasting_pipeline.utils.reproducibility import set_random_seed
 
 LOGGER = logging.getLogger(__name__)
@@ -60,6 +64,7 @@ LOGGER = logging.getLogger(__name__)
 # package import time.
 _WORKER_LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 _WORKER_LOG_DATEFMT = "%Y-%m-%dT%H:%M:%SZ"
+_worker_progress_tracker: TrainingProgressTracker | SharedTrainingProgressTracker | None = None
 
 
 @contextmanager
@@ -153,6 +158,16 @@ def train(config: ExperimentConfig) -> pd.DataFrame:
     horizons_to_train = _resolved_horizons(config)
     _log_train_run_context(config, horizons_to_train)
     horizon_workers = _resolve_horizon_workers(config, len(horizons_to_train))
+    per_horizon_models = len(config.models.baselines) + len(config.models.ml) + len(config.models.dl)
+    total_models = len(horizons_to_train) * per_horizon_models
+    LOGGER.info(
+        "Train plan: models=%s horizons=%s per_horizon=%s horizon_workers=%s target=%s",
+        total_models,
+        len(horizons_to_train),
+        per_horizon_models,
+        horizon_workers,
+        config.data.target,
+    )
 
     with _log_stage(
         "train",
@@ -167,6 +182,9 @@ def train(config: ExperimentConfig) -> pd.DataFrame:
         predictions_dir.mkdir(parents=True, exist_ok=True)
 
         if horizon_workers <= 1:
+            progress_tracker: TrainingProgressTracker | SharedTrainingProgressTracker = (
+                TrainingProgressTracker(total_models=total_models)
+            )
             for horizon_label, horizon_steps in horizons_to_train.items():
                 rows = _train_one_horizon(
                     config=config,
@@ -175,16 +193,20 @@ def train(config: ExperimentConfig) -> pd.DataFrame:
                     horizon_steps=horizon_steps,
                     predictions_dir=predictions_dir,
                     parallel_horizon_workers=1,
+                    progress_tracker=progress_tracker,
                 )
                 all_metrics.extend(rows)
         else:
-            all_metrics.extend(
-                _train_horizons_in_parallel(
-                    config=config,
-                    horizons=horizons_to_train,
-                    horizon_workers=horizon_workers,
+            with mp.Manager() as manager:
+                progress_tracker = SharedTrainingProgressTracker(total_models=total_models, manager=manager)
+                all_metrics.extend(
+                    _train_horizons_in_parallel(
+                        config=config,
+                        horizons=horizons_to_train,
+                        horizon_workers=horizon_workers,
+                        progress_tracker=progress_tracker,
+                    )
                 )
-            )
 
         with _log_stage("write metrics and plots"):
             metrics_df = pd.DataFrame(all_metrics)
@@ -302,6 +324,7 @@ def _train_one_horizon(
     horizon_steps: int,
     predictions_dir: Path,
     parallel_horizon_workers: int,
+    progress_tracker: TrainingProgressTracker | SharedTrainingProgressTracker | None,
 ) -> list[dict[str, Any]]:
     """Run the full per-horizon pipeline and return its metric rows.
 
@@ -381,11 +404,16 @@ def _train_one_horizon(
 
         horizon_models = 0
         for model_name in config.models.baselines:
+            slot: dict[str, int] | None = None
+            if progress_tracker is not None:
+                slot = progress_tracker.start_model()
             with _log_stage(
                 "train model",
                 family="baseline",
                 model=model_name,
                 horizon=horizon_label,
+                run=f"{slot['run']}/{slot['total']}" if slot is not None else "n/a",
+                remaining=slot["remaining"] if slot is not None else "n/a",
             ) as model_ctx:
                 model = make_baseline(model_name, target=config.data.target).fit(
                     splits["train"], target_col
@@ -401,9 +429,16 @@ def _train_one_horizon(
                 _save_baseline_artifact(config, horizon_label, model_name, model)
                 model_ctx["mae"] = result.get("mae")
                 model_ctx["rmse"] = result.get("rmse")
+                if progress_tracker is not None:
+                    done = progress_tracker.finish_model()
+                    model_ctx["run_completed"] = done["run_completed"]
+                    model_ctx["remaining"] = done["remaining"]
             horizon_models += 1
 
         for model_name in config.models.ml:
+            slot = None
+            if progress_tracker is not None:
+                slot = progress_tracker.start_model()
             with _log_stage(
                 "train model",
                 family="ml",
@@ -411,6 +446,8 @@ def _train_one_horizon(
                 horizon=horizon_label,
                 n_train=len(x_train),
                 n_features=x_train.shape[1] if x_train.ndim == 2 else len(feature_columns),
+                run=f"{slot['run']}/{slot['total']}" if slot is not None else "n/a",
+                remaining=slot["remaining"] if slot is not None else "n/a",
             ) as model_ctx:
                 model = make_ml_model(
                     model_name, config.project.random_seed, rf_n_jobs=rf_n_jobs
@@ -430,6 +467,10 @@ def _train_one_horizon(
                 )
                 model_ctx["mae"] = result.get("mae")
                 model_ctx["rmse"] = result.get("rmse")
+                if progress_tracker is not None:
+                    done = progress_tracker.finish_model()
+                    model_ctx["run_completed"] = done["run_completed"]
+                    model_ctx["remaining"] = done["remaining"]
             horizon_models += 1
 
         for model_name in config.models.dl:
@@ -444,6 +485,7 @@ def _train_one_horizon(
                 y_test,
                 predictions_dir,
                 target_scaler,
+                progress_tracker,
             )
             horizon_metrics.extend(dl_metrics)
             horizon_models += 1 if dl_metrics else 0
@@ -458,6 +500,7 @@ def _train_horizons_in_parallel(
     config: ExperimentConfig,
     horizons: dict[str, int],
     horizon_workers: int,
+    progress_tracker: SharedTrainingProgressTracker,
 ) -> list[dict[str, Any]]:
     """Train each horizon in its own worker process.
 
@@ -482,7 +525,12 @@ def _train_horizons_in_parallel(
     )
     metrics: list[dict[str, Any]] = []
     ctx = mp.get_context("spawn")
-    with ProcessPoolExecutor(max_workers=horizon_workers, mp_context=ctx) as executor:
+    with ProcessPoolExecutor(
+        max_workers=horizon_workers,
+        mp_context=ctx,
+        initializer=_init_horizon_worker_progress,
+        initargs=(progress_tracker,),
+    ) as executor:
         futures = {
             executor.submit(
                 _train_horizon_worker_entry,
@@ -493,6 +541,10 @@ def _train_horizons_in_parallel(
             ): horizon_label
             for horizon_label, horizon_steps in horizons.items()
         }
+        announced_runs = 0
+        total_models = int(progress_tracker.total_models)
+        completed_horizons = 0
+        total_horizons = len(horizons)
         for future in as_completed(futures):
             horizon_label = futures[future]
             try:
@@ -500,11 +552,26 @@ def _train_horizons_in_parallel(
             except Exception:
                 LOGGER.exception("Horizon worker failed: horizon=%s", horizon_label)
                 raise
+            for row in rows:
+                announced_runs += 1
+                LOGGER.info(
+                    "Stage start: train model family=%s model=%s horizon=%s run=%s/%s remaining=%s",
+                    row.get("model_family", "unknown"),
+                    row.get("model", "unknown"),
+                    row.get("horizon_label", horizon_label),
+                    announced_runs,
+                    total_models,
+                    max(total_models - announced_runs, 0),
+                )
+            completed_horizons += 1
+            snapshot = _tracker_progress_snapshot(progress_tracker)
             LOGGER.info(
-                "Horizon worker complete: horizon=%s rows=%s",
+                "Horizon worker complete: horizon=%s rows=%s%s",
                 horizon_label,
                 len(rows),
+                _fmt_context(snapshot) if snapshot is not None else "",
             )
+            LOGGER.info("Horizons complete: %s/%s", completed_horizons, total_horizons)
             metrics.extend(rows)
     return metrics
 
@@ -561,7 +628,15 @@ def _train_horizon_worker_entry(
         horizon_steps=horizon_steps,
         predictions_dir=predictions_dir,
         parallel_horizon_workers=horizon_workers,
+        progress_tracker=_worker_progress_tracker,
     )
+
+
+def _init_horizon_worker_progress(tracker: SharedTrainingProgressTracker) -> None:
+    """Attach shared progress tracker to worker globals and logging."""
+    global _worker_progress_tracker
+    _worker_progress_tracker = tracker
+    _configure_worker_logging()
 
 
 def _configure_worker_logging() -> None:
@@ -586,6 +661,7 @@ def _train_dl_if_possible(
     y_test_tabular: np.ndarray,
     predictions_dir: Path,
     target_scaler: object,
+    progress_tracker: TrainingProgressTracker | SharedTrainingProgressTracker | None,
 ) -> list[dict[str, Any]]:
     if len(scaled_splits["train"]) < config.training.min_dl_train_rows:
         LOGGER.warning(
@@ -691,6 +767,10 @@ def _train_dl_if_possible(
         )
         return []
 
+    slot: dict[str, int] | None = None
+    if progress_tracker is not None:
+        slot = progress_tracker.start_model()
+
     with _log_stage(
         "train model",
         family="dl",
@@ -701,6 +781,8 @@ def _train_dl_if_possible(
         sequence_length=seq_len,
         max_epochs=config.training.max_epochs,
         n_dl_features=len(dl_feature_columns),
+        run=f"{slot['run']}/{slot['total']}" if slot is not None else "n/a",
+        remaining=slot["remaining"] if slot is not None else "n/a",
     ) as model_ctx:
         model = make_dl_model(
             model_name, input_size=len(dl_feature_columns), sequence_length=seq_len
@@ -745,7 +827,29 @@ def _train_dl_if_possible(
         model_ctx["rmse"] = row.get("rmse")
         model_ctx["epochs_trained"] = result.epochs_trained
         model_ctx["best_validation_loss"] = result.best_validation_loss
+        if progress_tracker is not None:
+            done = progress_tracker.finish_model()
+            model_ctx["run_completed"] = done["run_completed"]
+            model_ctx["remaining"] = done["remaining"]
     return [row]
+
+
+def _tracker_progress_snapshot(
+    tracker: TrainingProgressTracker | SharedTrainingProgressTracker | None,
+) -> dict[str, int] | None:
+    """Best-effort read of completed/remaining counters for summary logs."""
+    if tracker is None:
+        return None
+    completed_value = getattr(tracker, "_completed", None)
+    total_models = getattr(tracker, "total_models", None)
+    if completed_value is None or total_models is None:
+        return None
+    try:
+        completed = int(completed_value.value) if hasattr(completed_value, "value") else int(completed_value)
+        total = int(total_models)
+    except (TypeError, ValueError):
+        return None
+    return {"run_completed": completed, "remaining": max(total - completed, 0)}
 
 
 def _record_result(
