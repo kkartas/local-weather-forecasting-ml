@@ -101,3 +101,40 @@ def test_dl_model_lazy_dataset_path_smoke():
     preds = predict_dl_model_from_dataset(result.model, val_ds, batch_size=8)
     assert preds.shape == (len(val_ds),)
     assert result.epochs_trained >= 1
+
+
+def test_train_dl_model_from_datasets_invokes_epoch_callback():
+    rng = np.random.default_rng(123)
+    n_features = 3
+    sequence_length = 5
+    x_train = rng.normal(size=(36, n_features)).astype(np.float32)
+    y_train = (x_train[:, 0] * 0.4).astype(np.float32)
+    x_val = rng.normal(size=(20, n_features)).astype(np.float32)
+    y_val = (x_val[:, 0] * 0.4).astype(np.float32)
+
+    train_ds = SequenceDataset(x_train, y_train, sequence_length=sequence_length)
+    val_ds = SequenceDataset(x_val, y_val, sequence_length=sequence_length)
+    model = make_dl_model("gru", input_size=n_features, sequence_length=sequence_length)
+    callback_calls: list[tuple[int, int, float, float, int]] = []
+
+    result = train_dl_model_from_datasets(
+        model,
+        train_ds,
+        val_ds,
+        max_epochs=3,
+        batch_size=4,
+        learning_rate=0.01,
+        patience=5,
+        seed=42,
+        on_epoch_end=lambda epoch, max_epochs, train_loss, val_loss, patience_left: callback_calls.append(
+            (epoch, max_epochs, train_loss, val_loss, patience_left)
+        ),
+    )
+
+    assert result.epochs_trained == len(callback_calls)
+    assert callback_calls, "Expected at least one epoch callback invocation"
+    assert callback_calls[0][0] == 1
+    assert all(max_epochs == 3 for _, max_epochs, _, _, _ in callback_calls)
+    assert all(np.isfinite(train_loss) for _, _, train_loss, _, _ in callback_calls)
+    assert all(np.isfinite(val_loss) for _, _, _, val_loss, _ in callback_calls)
+    assert all(isinstance(patience_left, int) for _, _, _, _, patience_left in callback_calls)

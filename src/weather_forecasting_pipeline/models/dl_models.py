@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 import torch
@@ -146,6 +146,7 @@ def train_dl_model_from_datasets(
     learning_rate: float,
     patience: int,
     seed: int,
+    on_epoch_end: Callable[[int, int, float, float, int], None] | None = None,
 ) -> DLTrainingResult:
     """Train a PyTorch sequence model using lazy ``Dataset`` inputs.
 
@@ -172,6 +173,8 @@ def train_dl_model_from_datasets(
     for epoch in range(max_epochs):
         epochs_done = epoch + 1
         model.train()
+        train_weighted_loss = 0.0
+        train_count = 0
         for xb, yb in train_loader:
             xb = xb.to(device)
             yb = yb.to(device)
@@ -179,6 +182,11 @@ def train_dl_model_from_datasets(
             loss = loss_fn(model(xb), yb)
             loss.backward()
             optimizer.step()
+            batch_count = int(yb.numel())
+            train_weighted_loss += float(loss.item()) * batch_count
+            train_count += batch_count
+
+        train_loss = train_weighted_loss / max(train_count, 1)
 
         model.eval()
         sse = 0.0
@@ -193,6 +201,7 @@ def train_dl_model_from_datasets(
                 sse += float(((preds - yb) ** 2).sum().item())
                 count += int(yb.numel())
         val_loss = sse / max(count, 1)
+        should_stop = False
         if val_loss < best_val:
             best_val = val_loss
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
@@ -200,7 +209,13 @@ def train_dl_model_from_datasets(
         else:
             bad_epochs += 1
             if bad_epochs >= patience:
-                break
+                should_stop = True
+
+        patience_left = max(patience - bad_epochs, 0)
+        if on_epoch_end is not None:
+            on_epoch_end(epochs_done, max_epochs, train_loss, val_loss, patience_left)
+        if should_stop:
+            break
 
     model.load_state_dict(best_state)
     model = model.cpu()

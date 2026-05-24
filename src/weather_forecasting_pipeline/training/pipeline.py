@@ -787,6 +787,28 @@ def _train_dl_if_possible(
         model = make_dl_model(
             model_name, input_size=len(dl_feature_columns), sequence_length=seq_len
         )
+
+        def _on_epoch_end(
+            epoch: int, max_epochs: int, train_loss: float, val_loss: float, patience_left: int
+        ) -> None:
+            should_log = config.training.progress_log_epochs or epoch == 1 or epoch == max_epochs
+            should_log = should_log or patience_left == 0
+            if not should_log:
+                return
+            LOGGER.info(
+                "Stage progress: train model family=dl model=%s horizon=%s "
+                "run=%s remaining=%s epoch=%s/%s train_loss=%.6f val_loss=%.6f patience_left=%s",
+                model_name,
+                horizon_label,
+                f"{slot['run']}/{slot['total']}" if slot is not None else "n/a",
+                slot["remaining"] if slot is not None else "n/a",
+                epoch,
+                max_epochs,
+                train_loss,
+                val_loss,
+                patience_left,
+            )
+
         result = train_dl_model_from_datasets(
             model,
             train_dataset,
@@ -796,6 +818,7 @@ def _train_dl_if_possible(
             learning_rate=config.training.learning_rate,
             patience=config.training.patience,
             seed=config.project.random_seed,
+            on_epoch_end=_on_epoch_end,
         )
         y_pred_scaled = predict_dl_model_from_dataset(
             result.model, test_dataset, batch_size=config.training.batch_size
