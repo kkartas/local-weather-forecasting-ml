@@ -212,22 +212,54 @@ horizon, and model emits matching `Stage start: ...` and
 `Stage finish: ... elapsed=<seconds>s ...` log lines, so a long run is
 auditable from the terminal output alone.
 
-The training stage logs include:
+The training stage adds structured progress lines:
 
-- a `Train context: ...` line with the resolved horizons, target, and the
-  configured baseline / ML / DL model lists,
-- one start/finish pair for each horizon (`Stage start: horizon h01 steps=6 target=temp_c_t+6`),
-- per-stage start/finish pairs for the supervised dataset build,
-  chronological split, feature-scaler fit, and target-scaler fit,
-- a `Stage start: train model family=<family> model=<name> horizon=<label> ...`
-  line before every baseline, ML, and DL fit, followed by a matching
-  finish line that includes `elapsed=<seconds>s`, `mae=<value>`, and
-  `rmse=<value>` (DL finish lines also include `epochs_trained` and
-  `best_validation_loss`),
-- explicit `Skip model: family=dl model=<name> horizon=<label> reason=<...>`
-  warnings when a deep-learning model cannot be trained because the train
-  split has fewer rows than `min_dl_train_rows` or because sequence
-  construction does not yield enough samples.
+- **Train plan** (once per `train` stage):
+
+  ```text
+  Train plan: models=60 horizons=6 per_horizon=10 horizon_workers=4 target=temp_c
+  ```
+
+- **Model start with global run slot** (`run` / `remaining`):
+
+  ```text
+  Stage start: train model family=ml model=svr horizon=h06 run=37/60 remaining=23 n_train=42000 n_features=85
+  ```
+
+- **Stage progress heartbeat (ML)**, controlled by
+  `training.progress_heartbeat_seconds`:
+
+  ```text
+  Stage progress: train model family=ml model=svr horizon=h06 run=37/60 remaining=23 heartbeat elapsed=180s status=fitting
+  ```
+
+- **Stage progress epochs (DL)**, controlled by
+  `training.progress_log_epochs`:
+
+  ```text
+  Stage progress: train model family=dl model=lstm horizon=h03 run=22/60 remaining=38 epoch=5/20 train_loss=0.041200 val_loss=0.037800 patience_left=3
+  ```
+
+- **Model finish with completed run counter** (`run_completed` /
+  `remaining`):
+
+  ```text
+  Stage finish: train model family=ml model=svr horizon=h06 elapsed=3842.15s run_completed=37/60 remaining=23 mae=1.234 rmse=1.567
+  ```
+
+- **Parallel horizon completion rollups** (main process, only when
+  `horizon_workers > 1`):
+
+  ```text
+  Horizon worker complete: horizon=h01 rows=10 run_completed=10/60 remaining=50
+  Horizons complete: 1/6
+  ```
+
+Other existing lines remain unchanged: `Train context: ...`, per-horizon
+and per-substage start/finish lines (`build supervised`, `split`,
+`fit feature scaler`, `fit target scaler`), and explicit
+`Skip model: family=dl ... reason=<...>` warnings when DL is not trainable
+for a horizon.
 
 The logging additions are observational only; training data, splits,
 scalers, hyperparameters, and metrics are unchanged.

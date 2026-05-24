@@ -208,4 +208,7 @@ def test_train_plan_and_counter_fields_are_logged(smoke_config, caplog):
     messages = [r.getMessage() for r in caplog.records]
     assert any(m.startswith("Train plan: models=") for m in messages)
     assert any("Stage start: train model" in m and "run=" in m and "remaining=" in m for m in messages)
-    assert any("Stage finish: train model" in m and "run_completed=" in m for m in messages)
+    assert any(
+        "Stage finish: train model" in m and "run_completed=" in m and "remaining=" in m
+        for m in messages
+    )

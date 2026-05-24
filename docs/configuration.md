@@ -115,6 +115,8 @@ training:
   patience: 5
   min_dl_train_rows: 300
   horizon_workers: 1
+  progress_heartbeat_seconds: 60
+  progress_log_epochs: true
 ```
 
 Deep-learning models use early stopping based on validation loss. If the training split is too small, deep-learning models are skipped with a warning.
@@ -129,6 +131,12 @@ horizons:
   `min(horizon_workers, n_horizons, cpu_count)`, and `RandomForestRegressor`
   is forced to `n_jobs=1` so the inner-loop sklearn parallelism does not
   collide with the outer process pool.
+- `progress_heartbeat_seconds` (default `60`) controls ML heartbeat
+  interval during blocking `.fit()` calls. Set to `0` to disable ML
+  heartbeat progress lines.
+- `progress_log_epochs` (default `true`) controls DL per-epoch progress
+  logs. When `false`, DL logs only first epoch, last epoch, and early-stop
+  epoch when applicable.
 
 See `docs/training.md#parallel-horizon-training` for the wall-time and
 memory expectations.
