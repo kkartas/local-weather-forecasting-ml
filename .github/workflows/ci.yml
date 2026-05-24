@@ -30,6 +30,9 @@ jobs:
       - name: Run pytest
         run: python -m pytest
 
+      - name: Generate synthetic smoke raw data
+        run: python scripts/generate_smoke_raw_data.py
+
       - name: CLI smoke run
         run: |
           python -m weather_forecasting_pipeline run-all --config configs/smoke.yaml
