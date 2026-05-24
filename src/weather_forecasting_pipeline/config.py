@@ -76,6 +76,8 @@ class TrainingConfig:
     # values greater than ``1`` train each horizon's full pipeline in its own
     # worker process and capped at ``min(value, n_horizons, cpu_count)``.
     horizon_workers: int = 1
+    progress_heartbeat_seconds: int = 60
+    progress_log_epochs: bool = True
 
 
 @dataclass(frozen=True)
@@ -175,6 +177,10 @@ def load_config(path: str | Path) -> ExperimentConfig:
             patience=int(training_raw["patience"]),
             min_dl_train_rows=int(training_raw.get("min_dl_train_rows", 300)),
             horizon_workers=int(training_raw.get("horizon_workers", 1)),
+            progress_heartbeat_seconds=max(
+                0, int(training_raw.get("progress_heartbeat_seconds", 60))
+            ),
+            progress_log_epochs=bool(training_raw.get("progress_log_epochs", True)),
         ),
         evaluation=EvaluationConfig(
             mape_epsilon=float(evaluation_raw.get("mape_epsilon", 1e-6)),

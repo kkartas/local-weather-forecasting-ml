@@ -56,7 +56,9 @@ training:
   # full pipeline in its own worker process and are capped at
   # ``min(value, n_horizons, cpu_count)``. When >1 the random forest is
   # forced to ``n_jobs=1`` to avoid outer x inner CPU oversubscription.
-  horizon_workers: 1
+  horizon_workers: 4
+  progress_heartbeat_seconds: 60
+  progress_log_epochs: true
 
 evaluation:
   mape_epsilon: 1.0e-6
