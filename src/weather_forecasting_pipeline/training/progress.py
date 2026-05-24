@@ -65,6 +65,10 @@ class SharedTrainingProgressTracker:
 def heartbeat_during(
     interval_seconds: int, tick: Callable[[int], None]
 ) -> Iterator[None]:
+    if interval_seconds <= 0:
+        yield
+        return
+
     stop = Event()
     started = time.perf_counter()
 

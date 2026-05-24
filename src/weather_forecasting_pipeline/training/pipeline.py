@@ -53,6 +53,7 @@ from weather_forecasting_pipeline.models.ml_models import make_ml_model
 from weather_forecasting_pipeline.training.progress import (
     SharedTrainingProgressTracker,
     TrainingProgressTracker,
+    heartbeat_during,
 )
 from weather_forecasting_pipeline.utils.reproducibility import set_random_seed
 
@@ -452,7 +453,19 @@ def _train_one_horizon(
                 model = make_ml_model(
                     model_name, config.project.random_seed, rf_n_jobs=rf_n_jobs
                 )
-                model.fit(x_train, y_train)
+                with heartbeat_during(
+                    config.training.progress_heartbeat_seconds,
+                    lambda elapsed: LOGGER.info(
+                        "Stage progress: train model family=ml model=%s horizon=%s "
+                        "run=%s remaining=%s heartbeat elapsed=%ss status=fitting",
+                        model_name,
+                        horizon_label,
+                        f"{slot['run']}/{slot['total']}" if slot is not None else "n/a",
+                        slot["remaining"] if slot is not None else "n/a",
+                        elapsed,
+                    ),
+                ):
+                    model.fit(x_train, y_train)
                 y_pred = model.predict(x_test).astype(np.float32)
                 result = _record_result(
                     config, horizon_label, horizon_steps, model_name, "ml", y_test, y_pred

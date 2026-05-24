@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import time
 from multiprocessing import Manager
 
 from weather_forecasting_pipeline.training.progress import (
@@ -56,3 +58,33 @@ def test_heartbeat_during_is_valid_context_manager():
         pass
 
     assert isinstance(ticks, list)
+
+
+def test_heartbeat_during_emits_ticks(caplog):
+    ticks = []
+
+    def _tick(elapsed: int) -> None:
+        ticks.append(elapsed)
+        logging.getLogger("weather_forecasting_pipeline.training.pipeline").info(
+            "Stage progress: train model family=ml model=svr horizon=h01 heartbeat elapsed=%ss status=fitting",
+            elapsed,
+        )
+
+    with caplog.at_level(logging.INFO):
+        with heartbeat_during(1, _tick):
+            time.sleep(2.2)
+
+    assert ticks
+    assert any(
+        "Stage progress: train model" in r.getMessage() and "heartbeat" in r.getMessage()
+        for r in caplog.records
+    )
+
+
+def test_heartbeat_during_noop_for_zero_interval():
+    ticks: list[int] = []
+
+    with heartbeat_during(0, ticks.append):
+        time.sleep(1.2)
+
+    assert ticks == []
