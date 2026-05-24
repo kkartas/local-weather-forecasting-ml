@@ -431,7 +431,7 @@ def _train_one_horizon(
                 model_ctx["rmse"] = result.get("rmse")
                 if progress_tracker is not None:
                     done = progress_tracker.finish_model()
-                    model_ctx["run_completed"] = done["run_completed"]
+                    model_ctx["run_completed"] = f"{done['run_completed']}/{done['total']}"
                     model_ctx["remaining"] = done["remaining"]
             horizon_models += 1
 
@@ -469,7 +469,7 @@ def _train_one_horizon(
                 model_ctx["rmse"] = result.get("rmse")
                 if progress_tracker is not None:
                     done = progress_tracker.finish_model()
-                    model_ctx["run_completed"] = done["run_completed"]
+                    model_ctx["run_completed"] = f"{done['run_completed']}/{done['total']}"
                     model_ctx["remaining"] = done["remaining"]
             horizon_models += 1
 
@@ -541,8 +541,6 @@ def _train_horizons_in_parallel(
             ): horizon_label
             for horizon_label, horizon_steps in horizons.items()
         }
-        announced_runs = 0
-        total_models = int(progress_tracker.total_models)
         completed_horizons = 0
         total_horizons = len(horizons)
         for future in as_completed(futures):
@@ -552,17 +550,6 @@ def _train_horizons_in_parallel(
             except Exception:
                 LOGGER.exception("Horizon worker failed: horizon=%s", horizon_label)
                 raise
-            for row in rows:
-                announced_runs += 1
-                LOGGER.info(
-                    "Stage start: train model family=%s model=%s horizon=%s run=%s/%s remaining=%s",
-                    row.get("model_family", "unknown"),
-                    row.get("model", "unknown"),
-                    row.get("horizon_label", horizon_label),
-                    announced_runs,
-                    total_models,
-                    max(total_models - announced_runs, 0),
-                )
             completed_horizons += 1
             snapshot = _tracker_progress_snapshot(progress_tracker)
             LOGGER.info(
@@ -829,7 +816,7 @@ def _train_dl_if_possible(
         model_ctx["best_validation_loss"] = result.best_validation_loss
         if progress_tracker is not None:
             done = progress_tracker.finish_model()
-            model_ctx["run_completed"] = done["run_completed"]
+            model_ctx["run_completed"] = f"{done['run_completed']}/{done['total']}"
             model_ctx["remaining"] = done["remaining"]
     return [row]
 

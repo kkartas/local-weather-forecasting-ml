@@ -187,10 +187,15 @@ def test_parallel_and_sequential_metrics_match_on_small_data(tmp_path: Path):
         ), f"{col} mismatch between sequential and parallel runs"
 
 
-def test_parallel_logs_unique_global_run_slots(tmp_path: Path, caplog):
+def test_parallel_main_logs_horizon_completion_progress(tmp_path: Path, caplog):
     config_path = _write_environment(tmp_path, horizon_workers=2)
     with caplog.at_level(logging.INFO):
         cli_main(["run-all", "--config", str(config_path), "--log-level", "INFO"])
-    starts = [r.getMessage() for r in caplog.records if "Stage start: train model" in r.getMessage() and "run=" in r.getMessage()]
-    run_values = sorted({int(line.split("run=")[1].split("/")[0]) for line in starts})
-    assert run_values == list(range(1, max(run_values) + 1))
+    messages = [r.getMessage() for r in caplog.records]
+
+    # In parallel mode, workers emit per-model train start lines; the parent
+    # process should only report per-horizon completion rollups.
+    assert not any("Stage start: train model" in m for m in messages)
+    assert any(m.startswith("Horizon worker complete: horizon=") for m in messages)
+    assert any(m == "Horizons complete: 1/2" for m in messages)
+    assert any(m == "Horizons complete: 2/2" for m in messages)
