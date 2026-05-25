@@ -83,6 +83,13 @@ class TrainingConfig:
     # bundle documented in CHANGES.md (2026-05-25). Set to ``None`` or a
     # non-positive value to disable clipping entirely.
     grad_clip_norm: float | None = 1.0
+    # ``torch_threads_per_worker`` caps the number of intra-process BLAS/MKL
+    # threads each horizon worker is allowed to use. Required to avoid the
+    # outer x inner CPU oversubscription that hits when ``horizon_workers``
+    # approaches ``cpu_count``. ``None`` (default) means "auto" and resolves
+    # to ``max(1, cpu_count // horizon_workers)`` when ``horizon_workers > 1``;
+    # threading is left at the PyTorch default in the sequential case.
+    torch_threads_per_worker: int | None = None
 
 
 @dataclass(frozen=True)
@@ -198,6 +205,15 @@ def load_config(path: str | Path) -> ExperimentConfig:
                 )
                 if "grad_clip_norm" in training_raw
                 else 1.0
+            ),
+            # ``torch_threads_per_worker`` accepts a positive integer override
+            # or explicit ``null`` for the auto-compute path. The pipeline
+            # resolves ``None`` against ``horizon_workers`` and ``cpu_count``
+            # at training time, so a missing key keeps the auto default.
+            torch_threads_per_worker=(
+                int(training_raw["torch_threads_per_worker"])
+                if training_raw.get("torch_threads_per_worker") is not None
+                else None
             ),
         ),
         evaluation=EvaluationConfig(

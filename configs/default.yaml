@@ -68,7 +68,14 @@ training:
   # full pipeline in its own worker process and are capped at
   # ``min(value, n_horizons, cpu_count)``. When >1 the random forest is
   # forced to ``n_jobs=1`` to avoid outer x inner CPU oversubscription.
-  horizon_workers: 4
+  # Bumped 4 -> 6 on 2026-05-25 (CHANGES.md) now that all 6 horizons can
+  # run concurrently after the SVR removal slashed the per-horizon time.
+  horizon_workers: 6
+  # Cap each worker's BLAS/MKL/PyTorch thread pool so 6 workers x N inner
+  # threads do not contend on the same CPU set. ``null`` would auto-resolve
+  # to ``max(1, cpu_count // horizon_workers)``; we set 2 explicitly to make
+  # the budget visible in the YAML (12-core target host: 6 x 2 = 12).
+  torch_threads_per_worker: 2
   progress_heartbeat_seconds: 60
   progress_log_epochs: true
 

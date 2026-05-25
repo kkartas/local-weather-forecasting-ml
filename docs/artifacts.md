@@ -107,6 +107,33 @@ clobbered by re-running the script.
 A `manifest.json` is written alongside `README.md` for downstream
 tooling. `CONCLUSION.md` is intentionally **not** auto-generated.
 
+### Delta runs + merged snapshots
+
+When a methodology change affects only some models, retraining the
+unchanged ones is wasted compute. The pipeline supports a delta-run
+workflow:
+
+1. Train only the changed models with `configs/default_delta.yaml`.
+2. Snapshot the delta run as usual (`snapshot_run.py --run-id <id>_delta`).
+3. Merge the delta snapshot with a baseline snapshot that contains the
+   unchanged models via `scripts/merge_run_snapshots.py`, driving the
+   canonical roster from `configs/default.yaml`.
+
+```powershell
+python scripts/merge_run_snapshots.py `
+    --baseline runs/180526 `
+    --delta runs/<id>_delta `
+    --full-config configs/default.yaml `
+    --output runs/<id>_final
+```
+
+The merged snapshot is a drop-in replacement for a full-run snapshot
+(same layout, regenerated plot set, merged metrics CSV/JSON) and adds a
+`MERGE_PROVENANCE.md` recording the source of every model and shared
+artifact. Reuse is valid because the pipeline is seeded; the merger
+also checks that split-metadata train/val/test boundaries match between
+baseline and delta and emits warnings if they do not.
+
 ## Cleanup
 
 Generated outputs can be removed safely between runs:

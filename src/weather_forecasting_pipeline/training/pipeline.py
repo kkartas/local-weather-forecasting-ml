@@ -317,6 +317,52 @@ def _resolve_horizon_workers(config: ExperimentConfig, n_horizons: int) -> int:
     return max(1, min(requested, max(1, n_horizons), cpu))
 
 
+def _resolve_torch_threads_per_worker(config: ExperimentConfig, horizon_workers: int) -> int | None:
+    """Resolve the per-worker BLAS/MKL thread budget.
+
+    Returns ``None`` when no cap should be applied (the sequential case),
+    otherwise a positive integer. When the user did not configure an
+    explicit value, the budget is auto-computed as
+    ``max(1, cpu_count // horizon_workers)`` so that the total spawned
+    threads across all workers do not exceed available CPUs. This guards
+    against the outer x inner oversubscription that triggers under
+    ``horizon_workers >= cpu_count // 2`` on machines without explicit
+    ``OMP_NUM_THREADS`` / ``MKL_NUM_THREADS`` env vars.
+    """
+    if horizon_workers <= 1:
+        # Sequential training: leave PyTorch at its default thread count so
+        # BLAS can use all cores for the single active model fit.
+        return None
+    explicit = config.training.torch_threads_per_worker
+    if explicit is not None:
+        return max(1, int(explicit))
+    cpu = max(1, os.cpu_count() or 1)
+    return max(1, cpu // horizon_workers)
+
+
+def _apply_thread_cap(threads_per_worker: int | None) -> None:
+    """Apply the per-worker thread cap to PyTorch and BLAS env vars.
+
+    Called inside each spawned worker before any training begins. The env
+    vars are also set so libraries that read them at import time (OpenMP,
+    MKL, OpenBLAS) honour the cap. ``torch.set_num_threads`` covers the
+    PyTorch intra-op pool directly. A ``None`` argument is a no-op so the
+    sequential code path keeps PyTorch defaults.
+    """
+    if threads_per_worker is None:
+        return
+    value = str(int(threads_per_worker))
+    os.environ["OMP_NUM_THREADS"] = value
+    os.environ["MKL_NUM_THREADS"] = value
+    os.environ["OPENBLAS_NUM_THREADS"] = value
+    try:
+        import torch
+
+        torch.set_num_threads(int(threads_per_worker))
+    except Exception:  # pragma: no cover - torch import failures are diagnosed elsewhere
+        LOGGER.exception("Failed to apply torch.set_num_threads(%s)", threads_per_worker)
+
+
 def _train_one_horizon(
     *,
     config: ExperimentConfig,
@@ -530,11 +576,13 @@ def _train_horizons_in_parallel(
             "pass the loaded config alongside its source path or call train() "
             "from the CLI."
         )
+    threads_per_worker = _resolve_torch_threads_per_worker(config, horizon_workers)
     LOGGER.info(
-        "Parallel horizon training: workers=%s horizons=%s config=%s",
+        "Parallel horizon training: workers=%s horizons=%s config=%s threads_per_worker=%s",
         horizon_workers,
         list(horizons.keys()),
         config_path,
+        threads_per_worker if threads_per_worker is not None else "auto-default",
     )
     metrics: list[dict[str, Any]] = []
     ctx = mp.get_context("spawn")
@@ -542,7 +590,7 @@ def _train_horizons_in_parallel(
         max_workers=horizon_workers,
         mp_context=ctx,
         initializer=_init_horizon_worker_progress,
-        initargs=(progress_tracker,),
+        initargs=(progress_tracker, threads_per_worker),
     ) as executor:
         futures = {
             executor.submit(
@@ -632,11 +680,27 @@ def _train_horizon_worker_entry(
     )
 
 
-def _init_horizon_worker_progress(tracker: SharedTrainingProgressTracker) -> None:
-    """Attach shared progress tracker to worker globals and logging."""
+def _init_horizon_worker_progress(
+    tracker: SharedTrainingProgressTracker,
+    threads_per_worker: int | None = None,
+) -> None:
+    """Attach shared progress tracker to worker globals and logging.
+
+    Also applies the BLAS/MKL/PyTorch thread cap before any model code runs
+    in the worker. Setting it here rather than inside the per-horizon entry
+    point guarantees the cap is in effect even for the brief initialization
+    work that happens before the first horizon is dispatched to the worker.
+    """
     global _worker_progress_tracker
     _worker_progress_tracker = tracker
     _configure_worker_logging()
+    _apply_thread_cap(threads_per_worker)
+    if threads_per_worker is not None:
+        LOGGER.info(
+            "Worker thread cap applied: pid=%s threads_per_worker=%s",
+            os.getpid(),
+            threads_per_worker,
+        )
 
 
 def _configure_worker_logging() -> None:

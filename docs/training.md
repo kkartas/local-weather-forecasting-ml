@@ -209,7 +209,8 @@ worker process.
 
 ```yaml
 training:
-  horizon_workers: 4
+  horizon_workers: 6
+  torch_threads_per_worker: 2
 ```
 
 - The pool uses the `spawn` start method so each worker re-imports the
@@ -220,6 +221,15 @@ training:
   `horizon_workers: 16` on a 6-horizon run with 8 CPUs collapses to 6.
 - When `horizon_workers > 1` the pipeline forces `RandomForestRegressor`
   to `n_jobs=1` to avoid outer × inner CPU oversubscription.
+- `torch_threads_per_worker` caps each worker's BLAS/MKL/PyTorch thread
+  pool (`OMP_NUM_THREADS`, `MKL_NUM_THREADS`, `OPENBLAS_NUM_THREADS`,
+  `torch.set_num_threads()`). Combined with the bullet above, the total
+  threads in flight equals `horizon_workers * torch_threads_per_worker`,
+  which should be at most `cpu_count`. Setting the YAML key to `null`
+  or omitting it activates the auto-formula
+  `max(1, cpu_count // horizon_workers)`. The default config ships with
+  `horizon_workers: 6` and `torch_threads_per_worker: 2` for the
+  dissertation's 12-CPU target host (CHANGES.md 2026-05-25).
 - Each worker reloads `data/interim/prepared.parquet` from disk on
   start. The main process therefore prepares the data once (`ingest`,
   `preprocess`) and spawns workers only for `train`.

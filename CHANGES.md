@@ -4,6 +4,87 @@ This file records divergences between the written dissertation methodology and t
 
 Use this file only for changes affecting methodology, experimental design, or scientific assumptions. General implementation notes and missing MetDataPy features belong elsewhere.
 
+## 2026-05-25 - Reuse unchanged-model artifacts via delta-run + merge
+
+- Affected component:
+  `configs/default_delta.yaml`,
+  `scripts/merge_run_snapshots.py`,
+  `runs/<run_id>/MERGE_PROVENANCE.md` documents.
+- What changed:
+  Added a "delta-run" workflow that retrains only the models whose
+  methodology changed in the 2026-05-25 updates (ridge, lstm, gru, tcn,
+  plus the deterministic baselines as a zero-cost sanity check). The
+  unchanged ML models (`random_forest`, `gradient_boosting`) are reused
+  bit-identically from the most recent prior run (currently `runs/180526`)
+  via the new `scripts/merge_run_snapshots.py` orchestrator. The merger
+  picks each model's artifacts from the delta snapshot when present and
+  falls back to the baseline snapshot otherwise; models that exist in
+  baseline but are not in the canonical `--full-config` roster (notably
+  the dropped `linear_regression` and `svr` families) are omitted from
+  the merged output. A `MERGE_PROVENANCE.md` file in the merged snapshot
+  records the source of every model and shared artifact, plus warnings
+  if baseline and delta split metadata disagree.
+- Why it changed:
+  Run 180526 burned ~17 hours of CPU time on the unchanged random forest
+  and gradient boosting families. Because the data, splits, scalers,
+  feature set, and model hyperparameters for those two families did not
+  change between the 2026-05-18 (DL feature policy) updates and the
+  2026-05-25 updates, retraining them again would produce bit-identical
+  outputs and waste compute. Retraining only the changed models drops
+  the next-run wall-clock from ~24-36 h to ~8-14 h.
+- Methodology impact:
+  The final dissertation metrics are sourced from two training runs that
+  share data, splits, scalers, and seed (deterministic by construction).
+  The methodology chapter should briefly acknowledge that
+  `random_forest` and `gradient_boosting` rows in the final table are
+  reused from run 180526, citing the determinism guarantees and the
+  `MERGE_PROVENANCE.md` audit trail. No scientific result is changed by
+  this decision; only the compute cost is reduced.
+- Dissertation update required:
+  Yes. Add one paragraph in the experimental-setup section explaining
+  the delta-run + merge approach, the determinism guarantee that makes
+  it valid, and that the per-row source is recorded in
+  `runs/<merged_id>/MERGE_PROVENANCE.md`.
+
+## 2026-05-25 - Thread-budget aware horizon parallelism
+
+- Affected component:
+  `weather_forecasting_pipeline.config.TrainingConfig`,
+  `weather_forecasting_pipeline.training.pipeline._resolve_torch_threads_per_worker`,
+  `weather_forecasting_pipeline.training.pipeline._apply_thread_cap`,
+  `weather_forecasting_pipeline.training.pipeline._init_horizon_worker_progress`,
+  `configs/default.yaml`, `configs/default_delta.yaml`.
+- What changed:
+  Each spawned horizon worker now applies a configurable cap on the
+  intra-process BLAS/MKL/PyTorch thread pool. The cap is taken from
+  `training.torch_threads_per_worker` (or auto-resolved to
+  `max(1, cpu_count // horizon_workers)` when the YAML key is unset or
+  null). The worker initializer exports `OMP_NUM_THREADS`,
+  `MKL_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, and calls
+  `torch.set_num_threads()` before any model code runs. The default
+  config now sets `horizon_workers: 6` and `torch_threads_per_worker: 2`
+  for the dissertation's 12-logical-CPU target host.
+- Why it changed:
+  Run 180526 used `horizon_workers: 4` on a 12-CPU host because the
+  codebase had no thread-cap mechanism and bumping to 6 workers would
+  have let each PyTorch worker grab all 12 cores, producing severe
+  outer x inner oversubscription (6 workers x 12 BLAS threads = 72
+  threads competing for 12 cores). With the cap in place, 6 workers x
+  2 threads = 12 threads cleanly mapped to 12 cores. This is the
+  standard pattern for running multiple ML/DL processes on a single
+  shared machine and is required for the dissertation's per-horizon
+  parallelism to scale to the full horizon count.
+- Methodology impact:
+  None on the science. Models, splits, seeds, features, and metrics are
+  unchanged. The change affects only wall-clock time and the number of
+  CPU threads each worker is allowed to use.
+- Dissertation update required:
+  Optional. If the implementation chapter discusses parallelism, mention
+  that the executable pipeline caps intra-worker BLAS/MKL/PyTorch threads
+  so the outer worker count and the inner thread count multiply to the
+  available core budget. Not a scientific point; purely an implementation
+  detail.
+
 ## 2026-05-25 - SVR removed from the default ML roster
 
 - Affected component:

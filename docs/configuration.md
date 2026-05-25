@@ -122,10 +122,20 @@ training:
   patience: 10
   grad_clip_norm: 1.0
   min_dl_train_rows: 300
-  horizon_workers: 1
+  horizon_workers: 6
+  torch_threads_per_worker: 2
   progress_heartbeat_seconds: 60
   progress_log_epochs: true
 ```
+
+`torch_threads_per_worker` caps the intra-process BLAS/MKL/PyTorch thread
+pool inside each spawned horizon worker so that
+`horizon_workers * torch_threads_per_worker` does not exceed the
+machine's CPU budget. Set to `null` (YAML) or omit to auto-resolve to
+`max(1, cpu_count // horizon_workers)`. Has no effect when
+`horizon_workers <= 1`. Required when `horizon_workers` approaches
+`cpu_count` to avoid outer x inner oversubscription (CHANGES.md
+2026-05-25).
 
 Deep-learning models use early stopping based on validation loss with
 patience `patience` over `max_epochs`. The training loop additionally

@@ -158,6 +158,37 @@ artifacts/plots/
 artifacts/reports/summary.md
 ```
 
+## Retraining Only Changed Models (Delta Workflow)
+
+When a methodology update affects only some models (e.g. a new model
+family is added, or training hyperparameters change for the DL family
+only), retraining the unchanged models is wasted compute on a
+deterministic pipeline. The delta-run workflow handles this:
+
+```powershell
+# 1. Train only the models that changed under the latest methodology updates
+python -m weather_forecasting_pipeline train --config configs/default_delta.yaml
+
+# 2. Freeze the delta run
+python scripts/snapshot_run.py --run-id <YYMMDD>_delta
+
+# 3. Merge the delta snapshot with the most recent baseline that contains
+#    the unchanged models (e.g. runs/180526), driving the canonical roster
+#    from configs/default.yaml. The merger picks each model's artifacts
+#    from the freshest available source and writes MERGE_PROVENANCE.md.
+python scripts/merge_run_snapshots.py `
+    --baseline runs/180526 `
+    --delta runs/<YYMMDD>_delta `
+    --full-config configs/default.yaml `
+    --output runs/<YYMMDD>_final
+```
+
+`runs/<YYMMDD>_final/` is then the dissertation-ready snapshot containing
+the full canonical model roster, with each row's source (baseline vs
+delta) audit-trailed in `MERGE_PROVENANCE.md`. Reuse is scientifically
+sound because the pipeline is seeded and the unchanged models receive
+identical data, splits, scalers, and hyperparameters.
+
 ## Snapshotting a Run
 
 After a training run completes, archive every artifact for that run (configs, models,
