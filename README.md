@@ -42,6 +42,7 @@ artifacts/reports/                Markdown experiment summaries
 src/weather_forecasting_pipeline/ Python package
 tests/                            Pytest suite
 scripts/                          Convenience scripts
+runs/<run_id>/                    Frozen per-run snapshots (artifacts + plots + CONCLUSION.md)
 ```
 
 ## Installation
@@ -156,6 +157,29 @@ artifacts/metrics/metrics.json
 artifacts/plots/
 artifacts/reports/summary.md
 ```
+
+## Snapshotting a Run
+
+After a training run completes, archive every artifact for that run (configs, models,
+scalers, metrics, predictions, supervised datasets, summary report) plus a regenerated
+analytical plot set into a self-contained folder under `runs/<run_id>/`:
+
+```powershell
+# Snapshot using today's date (YYMMDD) as run id; full archive (~7-8 GB)
+python scripts/snapshot_run.py
+
+# Explicit id, lightweight snapshot (skips SVR models and wide supervised parquets)
+python scripts/snapshot_run.py --run-id 180526 --skip-svr-models --skip-supervised
+
+# Re-run against an existing snapshot; an existing CONCLUSION.md is preserved
+python scripts/snapshot_run.py --run-id 180526 --force
+```
+
+The snapshot folder contains a `README.md` and `manifest.json` describing its contents,
+plus per-model `scatter`/`timeseries`/`residuals` plots for the winning models and
+comparison plots (MAE, RMSE, error growth, skill heatmap, best-per-family) covering the
+whole field. `CONCLUSION.md` is **not** generated automatically — it is intended to be
+authored separately using the snapshot as evidence.
 
 ## Testing
 

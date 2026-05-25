@@ -19,6 +19,9 @@ artifacts/metrics/*
 artifacts/plots/*
 artifacts/reports/*
 
+# Per-run snapshots (created by scripts/snapshot_run.py)
+runs/
+
 # Preserve directory layout
 !data/raw/.gitkeep
 !data/interim/.gitkeep

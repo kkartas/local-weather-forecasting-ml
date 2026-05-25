@@ -65,6 +65,20 @@ Current test coverage includes:
   generated outputs and leave raw data intact
   (`tests/test_pipeline_artifacts.py`)
 
+## Run Snapshots
+
+`scripts/snapshot_run.py` freezes a completed training run into
+`runs/<run_id>/`. It copies the configs, interim and processed datasets,
+trained models, scalers, metrics, predictions, and summary report, then
+calls `weather_forecasting_pipeline.plotting.snapshot.generate_snapshot_plots`
+to produce an extended analytical plot set (per-model scatter, time-series,
+residual diagnostics; aggregate MAE/RMSE comparisons, error-growth curves,
+skill-score heatmap, best-per-family bars).
+
+The snapshot script is the canonical way to produce dissertation-grade
+per-run archives. It does **not** write `CONCLUSION.md`; that file is
+authored separately and is preserved across `--force` re-runs.
+
 ## Continuous Integration
 
 A GitHub Actions workflow at `.github/workflows/ci.yml` runs `pytest`
