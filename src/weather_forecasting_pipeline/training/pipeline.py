@@ -818,6 +818,7 @@ def _train_dl_if_possible(
             learning_rate=config.training.learning_rate,
             patience=config.training.patience,
             seed=config.project.random_seed,
+            grad_clip_norm=config.training.grad_clip_norm,
             on_epoch_end=_on_epoch_end,
         )
         y_pred_scaled = predict_dl_model_from_dataset(

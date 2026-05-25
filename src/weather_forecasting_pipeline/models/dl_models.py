@@ -136,6 +136,15 @@ def make_dl_model(name: str, input_size: int, sequence_length: int = 144) -> nn.
     raise ValueError(f"Unknown DL model: {name}")
 
 
+# Hyperparameters of the LR scheduler attached to the Adam optimiser inside
+# :func:`train_dl_model_from_datasets`. The values mirror the bundle
+# documented in CHANGES.md (2026-05-25) and are kept module-level so tests
+# and downstream callers can introspect them without re-deriving the values.
+LR_SCHEDULER_FACTOR = 0.5
+LR_SCHEDULER_PATIENCE = 3
+LR_SCHEDULER_MIN_LR = 1e-5
+
+
 def train_dl_model_from_datasets(
     model: nn.Module,
     train_dataset: Dataset,
@@ -146,6 +155,7 @@ def train_dl_model_from_datasets(
     learning_rate: float,
     patience: int,
     seed: int,
+    grad_clip_norm: float | None = 1.0,
     on_epoch_end: Callable[[int, int, float, float, int], None] | None = None,
 ) -> DLTrainingResult:
     """Train a PyTorch sequence model using lazy ``Dataset`` inputs.
@@ -156,6 +166,20 @@ def train_dl_model_from_datasets(
     full training tensor is never materialized in memory. Validation loss is
     computed batch-wise as a sample-weighted MSE so the early-stopping anchor
     matches a single-pass forward over the validation set.
+
+    Training stability bundle (CHANGES.md 2026-05-25):
+
+    - A :class:`torch.optim.lr_scheduler.ReduceLROnPlateau` is attached to
+      the Adam optimiser and stepped after every validation pass. It halves
+      the learning rate when the validation loss has not improved for
+      :data:`LR_SCHEDULER_PATIENCE` epochs (down to
+      :data:`LR_SCHEDULER_MIN_LR`). This rescues training runs that would
+      otherwise hit early-stopping during a transient loss plateau.
+    - ``grad_clip_norm`` (default ``1.0``) clips the parameter gradients
+      to the given L2 norm before each optimiser step. Pass ``None`` or a
+      non-positive value to disable clipping. This protects against the
+      exploding-gradient events that produced the TCN-h12 and GRU-h24
+      collapses observed in run 180526.
     """
     torch.manual_seed(seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -163,7 +187,18 @@ def train_dl_model_from_datasets(
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=False)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode="min",
+        factor=LR_SCHEDULER_FACTOR,
+        patience=LR_SCHEDULER_PATIENCE,
+        min_lr=LR_SCHEDULER_MIN_LR,
+    )
     loss_fn = nn.MSELoss()
+
+    # A non-positive or ``None`` clip threshold disables gradient clipping
+    # without forcing callers to thread a separate flag through the API.
+    clip_enabled = grad_clip_norm is not None and grad_clip_norm > 0.0
 
     best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
     best_val = float("inf")
@@ -181,6 +216,11 @@ def train_dl_model_from_datasets(
             optimizer.zero_grad()
             loss = loss_fn(model(xb), yb)
             loss.backward()
+            if clip_enabled:
+                # ``clip_grad_norm_`` rescales gradients in-place when the
+                # global L2 norm exceeds ``max_norm``. It is a no-op when
+                # gradients are well-behaved, so the cost is negligible.
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=float(grad_clip_norm))
             optimizer.step()
             batch_count = int(yb.numel())
             train_weighted_loss += float(loss.item()) * batch_count
@@ -201,6 +241,11 @@ def train_dl_model_from_datasets(
                 sse += float(((preds - yb) ** 2).sum().item())
                 count += int(yb.numel())
         val_loss = sse / max(count, 1)
+        # Drive the LR scheduler on the validation-loss anchor. The
+        # scheduler decrements the learning rate after
+        # ``LR_SCHEDULER_PATIENCE`` non-improving epochs; outer early
+        # stopping still applies on top via the ``patience`` counter.
+        scheduler.step(val_loss)
         should_stop = False
         if val_loss < best_val:
             best_val = val_loss
@@ -234,6 +279,7 @@ def train_dl_model(
     learning_rate: float,
     patience: int,
     seed: int,
+    grad_clip_norm: float | None = 1.0,
 ) -> DLTrainingResult:
     """Train a PyTorch sequence model with validation early stopping.
 
@@ -241,7 +287,9 @@ def train_dl_model(
     arrays. The training pipeline uses :func:`train_dl_model_from_datasets`
     with on-demand sequence windows to stay memory-safe on the full
     multi-year configuration; this helper remains for unit tests and small
-    fixtures that already hold the full tensor in memory.
+    fixtures that already hold the full tensor in memory. ``grad_clip_norm``
+    forwards to the underlying training loop (see its docstring for the
+    full stability bundle).
     """
     train_ds = TensorDataset(torch.from_numpy(x_train), torch.from_numpy(y_train))
     val_ds = TensorDataset(torch.from_numpy(x_val), torch.from_numpy(y_val))
@@ -254,6 +302,7 @@ def train_dl_model(
         learning_rate=learning_rate,
         patience=patience,
         seed=seed,
+        grad_clip_norm=grad_clip_norm,
     )
 
 

@@ -38,10 +38,16 @@ Implemented in `weather_forecasting_pipeline.models.ml_models`.
 
 Supported names:
 
-- `linear_regression`
+- `ridge` (default linear baseline; `RidgeCV` with α ∈ {0.1, 1, 10, 100},
+  leave-one-out CV on the training partition only)
 - `random_forest`
 - `gradient_boosting`
-- `svr`
+- `linear_regression` (legacy OLS; retained for run 180526 reproduction
+  but excluded from the default configuration after the RMSE explosion
+  observed on the wide lag matrix — see CHANGES.md 2026-05-25)
+- `svr` (legacy SVR with RBF kernel; retained for run 180526 reproduction
+  but excluded from the default configuration after never winning any
+  horizon and exhibiting O(n²–n³) fit cost — see CHANGES.md 2026-05-25)
 
 These models use tabular engineered features.
 
@@ -153,19 +159,50 @@ Configured parameters:
 
 ```yaml
 training:
-  max_epochs: 20
+  max_epochs: 40
   batch_size: 32
   learning_rate: 0.001
-  patience: 5
+  patience: 10
+  grad_clip_norm: 1.0
   min_dl_train_rows: 300
 ```
 
 If the training split has fewer rows than `min_dl_train_rows`, deep-learning models are skipped for that horizon.
 
+### DL training stability bundle
+
+Introduced in CHANGES.md 2026-05-25 after run 180526 produced two DL
+training collapses (TCN at h12, GRU at h24) consistent with exploding
+gradients and over-eager early stopping during transient loss plateaus.
+
+The DL training loop in
+`weather_forecasting_pipeline.models.dl_models.train_dl_model_from_datasets`
+applies three coupled mechanisms on top of Adam + MSE + validation-loss
+early stopping:
+
+1. **Outer early stopping** on the validation loss with patience
+   `training.patience` over at most `training.max_epochs` epochs. The
+   defaults are 10 and 40 respectively.
+2. **Learning-rate scheduling** via
+   `torch.optim.lr_scheduler.ReduceLROnPlateau(factor=0.5, patience=3,
+   min_lr=1e-5)`, stepped after every validation pass. The internal
+   patience is intentionally smaller than the outer early-stopping
+   patience so the scheduler can rescue a model from a plateau before
+   the outer counter fires. The scheduler hyperparameters are fixed and
+   not exposed via the YAML; they are documented as constants
+   `LR_SCHEDULER_FACTOR`, `LR_SCHEDULER_PATIENCE`, and `LR_SCHEDULER_MIN_LR`
+   in the module.
+3. **Gradient clipping** via `torch.nn.utils.clip_grad_norm_` applied
+   before each optimiser step. The threshold is the L2 norm
+   `training.grad_clip_norm` (default `1.0`). Set the YAML key to
+   `null` to disable clipping; omit it to keep the documented default.
+
 ## Parallel Horizon Training
 
-Long full-config runs are dominated by single-threaded RBF `SVR` per
-horizon. Set `training.horizon_workers` greater than `1` to run each
+Long full-config runs were historically dominated by single-threaded RBF
+`SVR` per horizon (now removed from the default roster — see CHANGES.md
+2026-05-25); `RandomForestRegressor` is the remaining slowest fit on most
+configurations. Set `training.horizon_workers` greater than `1` to run each
 horizon's full per-horizon pipeline (supervised build, split, scalers,
 baselines, ML, DL, predictions, and per-horizon artifacts) in its own
 worker process.

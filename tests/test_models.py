@@ -41,6 +41,42 @@ def test_baseline_and_ml_smoke(synthetic_station_frame):
     assert pred.shape[0] == x_test.shape[0]
 
 
+def test_ridge_smoke(synthetic_station_frame):
+    """``ridge`` is the new default linear baseline (CHANGES.md 2026-05-25).
+
+    Exercises the full fit/predict path so a regression in
+    ``make_ml_model("ridge", ...)`` is caught by the test suite. ``RidgeCV``
+    is expected to expose ``alpha_`` after fit, which is a cheap sanity
+    check that cross-validation actually ran.
+    """
+    from sklearn.linear_model import RidgeCV
+
+    supervised = make_supervised_with_metdatapy(
+        synthetic_station_frame, target="temp_c", horizons=[3], lags=[1, 3]
+    )
+    target_col = target_column_name("temp_c", 3)
+    splits = split_by_fraction_with_metdatapy(supervised, 0.7, 0.15)
+
+    features = select_feature_columns(supervised, target_col)
+    x_train, y_train = arrays_from_split(splits["train"], features, target_col)
+    x_test, _ = arrays_from_split(splits["test"], features, target_col)
+    model = make_ml_model("ridge", random_seed=42)
+    assert isinstance(model, RidgeCV)
+    model.fit(x_train, y_train)
+    pred = model.predict(x_test)
+    assert pred.shape[0] == x_test.shape[0]
+    # The cross-validated alpha must be drawn from the configured grid.
+    assert model.alpha_ in (0.1, 1.0, 10.0, 100.0)
+
+
+def test_unknown_ml_model_raises():
+    """Removed/unknown model names must raise rather than silently fall through."""
+    import pytest
+
+    with pytest.raises(ValueError, match="Unknown ML model"):
+        make_ml_model("does_not_exist", random_seed=42)
+
+
 def test_dl_model_smoke():
     rng = np.random.default_rng(42)
     x_train = rng.normal(size=(20, 4, 3)).astype(np.float32)
@@ -101,6 +137,124 @@ def test_dl_model_lazy_dataset_path_smoke():
     preds = predict_dl_model_from_dataset(result.model, val_ds, batch_size=8)
     assert preds.shape == (len(val_ds),)
     assert result.epochs_trained >= 1
+
+
+def test_train_dl_model_from_datasets_applies_grad_clipping(monkeypatch):
+    """``grad_clip_norm`` must call ``clip_grad_norm_`` once per optimiser step.
+
+    Run 180526 produced two DL collapses (TCN-h12, GRU-h24) consistent with
+    exploding gradients. Gradient clipping is the agreed mitigation
+    (CHANGES.md 2026-05-25). This test pins the contract that the training
+    loop invokes ``torch.nn.utils.clip_grad_norm_`` with the configured
+    norm and is bypassed entirely when the caller passes ``None``.
+    """
+    import torch
+
+    from weather_forecasting_pipeline.models import dl_models
+
+    rng = np.random.default_rng(0)
+    n_features = 3
+    sequence_length = 4
+    x_train = rng.normal(size=(20, n_features)).astype(np.float32)
+    y_train = (x_train[:, 0] * 0.3).astype(np.float32)
+    x_val = rng.normal(size=(10, n_features)).astype(np.float32)
+    y_val = (x_val[:, 0] * 0.3).astype(np.float32)
+    train_ds = SequenceDataset(x_train, y_train, sequence_length=sequence_length)
+    val_ds = SequenceDataset(x_val, y_val, sequence_length=sequence_length)
+
+    calls: list[float] = []
+    original_clip = torch.nn.utils.clip_grad_norm_
+
+    def _spy(parameters, max_norm, **kwargs):
+        calls.append(float(max_norm))
+        return original_clip(parameters, max_norm, **kwargs)
+
+    monkeypatch.setattr(torch.nn.utils, "clip_grad_norm_", _spy)
+
+    model = dl_models.make_dl_model("gru", input_size=n_features, sequence_length=sequence_length)
+    dl_models.train_dl_model_from_datasets(
+        model,
+        train_ds,
+        val_ds,
+        max_epochs=1,
+        batch_size=4,
+        learning_rate=0.01,
+        patience=1,
+        seed=42,
+        grad_clip_norm=0.5,
+    )
+    assert calls, "clip_grad_norm_ was never invoked with grad_clip_norm=0.5"
+    assert all(c == 0.5 for c in calls)
+
+    calls.clear()
+    model = dl_models.make_dl_model("gru", input_size=n_features, sequence_length=sequence_length)
+    dl_models.train_dl_model_from_datasets(
+        model,
+        train_ds,
+        val_ds,
+        max_epochs=1,
+        batch_size=4,
+        learning_rate=0.01,
+        patience=1,
+        seed=42,
+        grad_clip_norm=None,
+    )
+    assert calls == [], "clip_grad_norm_ must not be called when grad_clip_norm is None"
+
+
+def test_train_dl_model_from_datasets_attaches_lr_scheduler():
+    """``ReduceLROnPlateau`` must be constructed and stepped during training.
+
+    Pins the scheduler contract from CHANGES.md 2026-05-25 so a refactor
+    that drops the scheduler is caught immediately. The actual rate change
+    only triggers after several non-improving epochs, so we assert the
+    scheduler was constructed and is in a valid state rather than asserting
+    on a learning-rate value the test fixture cannot reliably produce.
+    """
+    import torch
+
+    from weather_forecasting_pipeline.models import dl_models
+
+    constructed: list[torch.optim.lr_scheduler.ReduceLROnPlateau] = []
+    original_cls = torch.optim.lr_scheduler.ReduceLROnPlateau
+
+    class _SpyScheduler(original_cls):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            constructed.append(self)
+
+    torch.optim.lr_scheduler.ReduceLROnPlateau = _SpyScheduler  # type: ignore[assignment]
+    try:
+        rng = np.random.default_rng(1)
+        n_features = 3
+        sequence_length = 4
+        x_train = rng.normal(size=(20, n_features)).astype(np.float32)
+        y_train = (x_train[:, 0] * 0.3).astype(np.float32)
+        x_val = rng.normal(size=(10, n_features)).astype(np.float32)
+        y_val = (x_val[:, 0] * 0.3).astype(np.float32)
+        train_ds = SequenceDataset(x_train, y_train, sequence_length=sequence_length)
+        val_ds = SequenceDataset(x_val, y_val, sequence_length=sequence_length)
+        model = dl_models.make_dl_model("gru", input_size=n_features, sequence_length=sequence_length)
+        dl_models.train_dl_model_from_datasets(
+            model,
+            train_ds,
+            val_ds,
+            max_epochs=2,
+            batch_size=4,
+            learning_rate=0.01,
+            patience=2,
+            seed=42,
+        )
+    finally:
+        torch.optim.lr_scheduler.ReduceLROnPlateau = original_cls  # type: ignore[assignment]
+
+    assert constructed, "ReduceLROnPlateau was never constructed inside training"
+    sched = constructed[0]
+    # Documented hyperparameters of the bundle.
+    assert sched.factor == dl_models.LR_SCHEDULER_FACTOR
+    assert sched.patience == dl_models.LR_SCHEDULER_PATIENCE
+    # min_lr is stored per-parameter-group as a list; verify the configured floor.
+    assert min(sched.min_lrs) == dl_models.LR_SCHEDULER_MIN_LR
 
 
 def test_train_dl_model_from_datasets_invokes_epoch_callback():

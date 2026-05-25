@@ -78,6 +78,11 @@ class TrainingConfig:
     horizon_workers: int = 1
     progress_heartbeat_seconds: int = 60
     progress_log_epochs: bool = True
+    # ``grad_clip_norm`` controls the L2 gradient-clipping threshold applied
+    # inside the DL training loop. The default 1.0 reflects the stability
+    # bundle documented in CHANGES.md (2026-05-25). Set to ``None`` or a
+    # non-positive value to disable clipping entirely.
+    grad_clip_norm: float | None = 1.0
 
 
 @dataclass(frozen=True)
@@ -181,6 +186,19 @@ def load_config(path: str | Path) -> ExperimentConfig:
                 0, int(training_raw.get("progress_heartbeat_seconds", 60))
             ),
             progress_log_epochs=bool(training_raw.get("progress_log_epochs", True)),
+            # ``grad_clip_norm`` differentiates "missing key" (use default 1.0)
+            # from "explicit null" (disabled). YAML parses ``null`` to Python
+            # ``None`` and a missing key triggers the ``.get`` fallback, which
+            # we distinguish by checking key presence first.
+            grad_clip_norm=(
+                (
+                    None
+                    if training_raw.get("grad_clip_norm") is None
+                    else float(training_raw["grad_clip_norm"])
+                )
+                if "grad_clip_norm" in training_raw
+                else 1.0
+            ),
         ),
         evaluation=EvaluationConfig(
             mape_epsilon=float(evaluation_raw.get("mape_epsilon", 1e-6)),

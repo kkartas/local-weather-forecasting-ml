@@ -97,7 +97,7 @@ Two scalers are saved per horizon:
 ```yaml
 models:
   baselines: [persistence, moving_average, climatology]
-  ml: [linear_regression, random_forest, gradient_boosting, svr]
+  ml: [ridge, random_forest, gradient_boosting]
   dl: [lstm, gru, tcn]
 ```
 
@@ -105,21 +105,42 @@ Each configured model is trained separately for each configured horizon.
 Supported baseline names are `persistence`, `moving_average`, and
 `climatology`; all three are fit on the training partition only.
 
+Supported ML names are `ridge` (default linear baseline; `RidgeCV` with
+α ∈ {0.1, 1, 10, 100}), `random_forest`, `gradient_boosting`, and the
+deprecated names `linear_regression` and `svr` retained for backwards
+compatibility with run 180526 reproduction. See CHANGES.md
+(2026-05-25) for the rationale behind the substitution and the SVR
+removal.
+
 ## Training Settings
 
 ```yaml
 training:
-  max_epochs: 20
+  max_epochs: 40
   batch_size: 32
   learning_rate: 0.001
-  patience: 5
+  patience: 10
+  grad_clip_norm: 1.0
   min_dl_train_rows: 300
   horizon_workers: 1
   progress_heartbeat_seconds: 60
   progress_log_epochs: true
 ```
 
-Deep-learning models use early stopping based on validation loss. If the training split is too small, deep-learning models are skipped with a warning.
+Deep-learning models use early stopping based on validation loss with
+patience `patience` over `max_epochs`. The training loop additionally
+attaches a `ReduceLROnPlateau` learning-rate scheduler (factor 0.5,
+internal patience 3, floor 1e-5) so transient validation-loss plateaus
+trigger a learning-rate cut before they trigger early stopping.
+
+`grad_clip_norm` is the L2 threshold for `torch.nn.utils.clip_grad_norm_`
+applied before each optimiser step. The default `1.0` reflects the
+stability bundle introduced in CHANGES.md (2026-05-25) after run 180526
+showed two DL training collapses consistent with exploding gradients.
+Set this key to `null` (YAML) to disable clipping entirely; omit it to
+keep the documented default.
+
+If the training split is too small, deep-learning models are skipped with a warning.
 
 `horizon_workers` controls process-level parallelism over forecast
 horizons:

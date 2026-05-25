@@ -4,6 +4,108 @@ This file records divergences between the written dissertation methodology and t
 
 Use this file only for changes affecting methodology, experimental design, or scientific assumptions. General implementation notes and missing MetDataPy features belong elsewhere.
 
+## 2026-05-25 - SVR removed from the default ML roster
+
+- Affected component:
+  `weather_forecasting_pipeline.models.ml_models.make_ml_model`,
+  `configs/default.yaml`.
+- What changed:
+  `svr` is no longer listed under `models.ml` in the default configuration.
+  The `make_ml_model` factory still rejects unknown names but no longer
+  constructs an `sklearn.svm.SVR` instance for new runs. `linear_regression`
+  and the remaining ML families (`random_forest`, `gradient_boosting`) are
+  unchanged. The `svr` factory branch is retained for backwards compatibility
+  with explicit reproduction of run 180526 but is not exercised by any
+  shipped configuration.
+- Why it changed:
+  Run 180526 showed that SVR never achieved the best MAE at any of the six
+  configured horizons; produced **negative** persistence skill scores at the
+  10-minute (-7.76), 1-hour (-0.63) and 24-hour (-0.30) horizons; and was at
+  most marginally competitive at h06/h12 while remaining 6–23 % worse than
+  `gradient_boosting` in MAE. Its kernelised fit cost is O(n²–n³) in the
+  number of training rows, which on the dissertation's ~100k training rows
+  produces ~870 MB per saved model and a fit time that dominates the run.
+  The scientific contribution of keeping it is therefore zero while the
+  cost is high; the model family is removed from the dissertation's final
+  roster.
+- Methodology impact:
+  The final results table loses one row per horizon (the SVR row). All other
+  models are unaffected. Run 180526 remains the cited evidence base in the
+  dissertation's model-selection discussion.
+- Dissertation update required:
+  Yes. Document in the methodology chapter that SVR was evaluated in a
+  preliminary run (180526) and excluded from the final roster on the basis
+  of consistent under-performance and intractable compute cost on the
+  full training set.
+
+## 2026-05-25 - Linear regression replaced with RidgeCV
+
+- Affected component:
+  `weather_forecasting_pipeline.models.ml_models.make_ml_model`,
+  `configs/default.yaml`, `configs/smoke.yaml`.
+- What changed:
+  Added a `ridge` ML model that constructs an `sklearn.linear_model.RidgeCV`
+  with `alphas=(0.1, 1.0, 10.0, 100.0)` (efficient leave-one-out CV on the
+  training split). The default configuration now lists `ridge` in place of
+  `linear_regression`. The `linear_regression` factory is retained for
+  backwards compatibility with run 180526 reproduction but is no longer the
+  default linear baseline.
+- Why it changed:
+  Run 180526's `linear_regression` produced MAE values in line with the
+  rest of the field (0.40–2.37 °C) but **RMSE values of 7.7, 13.4, 12.4 and
+  13.9 °C** at horizons h03, h06, h12 and h24 respectively. The RMSE ≫ MAE
+  gap is the signature of multicollinearity-driven extreme predictions
+  on the wide 232-feature design matrix (lag+rolling stats are
+  near-redundant). L2 regularisation is the standard, defensible remedy
+  for this pathology; cross-validating α on the training split alone
+  preserves the leakage rules in `AGENTS.md`.
+- Methodology impact:
+  Replaces one ML row per horizon. Tree ensembles, baselines and DL models
+  are unaffected. Run 180526 remains the cited evidence base for the
+  substitution.
+- Dissertation update required:
+  Yes. Document the substitution in the methodology chapter (RidgeCV with
+  α ∈ {0.1, 1, 10, 100}, leave-one-out CV on the training partition only).
+  In the results comparison, note that the OLS variant exhibited the RMSE
+  explosion and that ridge regularisation is the response.
+
+## 2026-05-25 - Deep-learning training stability: longer patience, LR scheduler, gradient clipping
+
+- Affected component:
+  `weather_forecasting_pipeline.models.dl_models.train_dl_model_from_datasets`,
+  `weather_forecasting_pipeline.config.TrainingConfig`,
+  `configs/default.yaml`.
+- What changed:
+  The DL training loop now (a) attaches a
+  `torch.optim.lr_scheduler.ReduceLROnPlateau(factor=0.5, patience=3,
+  min_lr=1e-5)` to the Adam optimiser and steps it after each validation
+  pass; (b) clips parameter gradients with
+  `torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=grad_clip_norm)`
+  before each optimiser step; (c) reads `grad_clip_norm` from
+  `TrainingConfig.grad_clip_norm` (`None` disables clipping). The default
+  configuration now sets `max_epochs: 40`, `patience: 10`, and
+  `grad_clip_norm: 1.0` (was `max_epochs: 20`, `patience: 5`, no clipping).
+- Why it changed:
+  Run 180526 produced two DL training collapses: TCN at h12 (MAE 5.62 °C,
+  MAPE 117 %, early-stopped at epoch 7/20) and GRU at h24 (MAE 5.18 °C,
+  MAPE 114 %, early-stopped at epoch 6/20). Both exited well before the
+  loss surface had stabilised, with patience=5 firing on a transient
+  validation-loss bump that a learning-rate cut would have absorbed.
+  Gradient clipping is included as a low-cost insurance against the
+  exploding-gradient events that produce these abrupt collapses on long
+  horizons. The bundle is the standard prescription for stabilising
+  sequence-model training under early stopping.
+- Methodology impact:
+  Affects only the DL family. The combination of longer patience, LR
+  scheduling and gradient clipping changes the training trajectory but
+  not the model architectures, the data, the splits or the metrics. The
+  ML and baseline rows remain directly comparable to run 180526.
+- Dissertation update required:
+  Yes. Document the DL optimisation protocol (Adam, MSE loss, batch 32,
+  max 40 epochs, validation-loss early stopping with patience 10,
+  ReduceLROnPlateau with factor 0.5/patience 3/min_lr 1e-5, gradient
+  clipping at L2 norm 1.0) in the methodology chapter.
+
 ## 2026-05-18 - Deep-learning feature set excludes lag columns
 
 - Affected component:

@@ -3,8 +3,15 @@
 from __future__ import annotations
 
 from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression, RidgeCV
 from sklearn.svm import SVR
+
+# Ridge alpha grid for ``RidgeCV``. Spans three orders of magnitude so that
+# the cross-validated choice is meaningful for the wide (~232 feature) lag
+# plus rolling design matrix used by the pipeline. RidgeCV uses an efficient
+# leave-one-out routine on the training partition only, which preserves the
+# project's chronological-split leakage rules.
+_RIDGE_ALPHAS = (0.1, 1.0, 10.0, 100.0)
 
 
 def make_ml_model(name: str, random_seed: int, *, rf_n_jobs: int = -1):
@@ -15,7 +22,20 @@ def make_ml_model(name: str, random_seed: int, *, rf_n_jobs: int = -1):
     behaviour (use all available cores) for sequential training. When the
     pipeline trains horizons in parallel it passes ``rf_n_jobs=1`` so that
     outer × inner CPU oversubscription does not collapse throughput.
+
+    Notes on roster changes:
+
+    - ``ridge`` is the default linear baseline as of 2026-05-25 because
+      OLS produced an RMSE explosion on the wide lag+rolling feature
+      matrix in run 180526 (CHANGES.md).
+    - ``linear_regression`` (plain OLS) is retained for backwards
+      compatibility with run 180526 reproduction; it is no longer part of
+      the shipped default configuration.
+    - ``svr`` is retained for the same reason but is similarly excluded
+      from the shipped default configuration (CHANGES.md, run 180526).
     """
+    if name == "ridge":
+        return RidgeCV(alphas=_RIDGE_ALPHAS)
     if name == "linear_regression":
         return LinearRegression()
     if name == "random_forest":
