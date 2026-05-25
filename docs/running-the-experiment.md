@@ -22,6 +22,20 @@ Verify the test suite before running experiments:
 python -m pytest
 ```
 
+### Google Colab
+
+Use `notebooks/full_experiment_colab.ipynb` when running the full
+experiment suite on Google Colab. The notebook follows this same workflow
+by installing the repository, adding Weathercloud CSV files to `data/raw/`,
+running `python -m weather_forecasting_pipeline run-all --config
+configs/default.yaml`, snapshotting the completed run, and exporting the
+snapshot as a zip archive.
+
+The notebook has toggles for a smoke check, browser upload versus
+Drive-backed raw data, and Drive/browser export. The full experiment cell
+uses `configs/default.yaml`; `configs/smoke.yaml` is only for software-path
+verification.
+
 ## 2. Add Weathercloud Data
 
 Place one or more Weathercloud CSV exports in:

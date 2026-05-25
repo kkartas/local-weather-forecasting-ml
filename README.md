@@ -103,6 +103,13 @@ The configuration controls paths, target variable, forecast horizons, lags, roll
 
 For a step-by-step workflow from multi-year Weathercloud exports to dissertation-ready outputs, see `docs/running-the-experiment.md`.
 
+To run the full experiment suite on Google Colab and export the generated
+datasets/artifacts, use:
+
+```text
+notebooks/full_experiment_colab.ipynb
+```
+
 Run the full pipeline:
 
 ```powershell

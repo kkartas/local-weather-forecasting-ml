@@ -38,3 +38,8 @@ python -m weather_forecasting_pipeline run-all --config configs/default.yaml
 ```
 
 Use `configs/smoke.yaml` for fast verification.
+
+For Google Colab, open `notebooks/full_experiment_colab.ipynb`. It installs
+the package, accepts Weathercloud CSV uploads or Drive-backed raw data,
+runs the same CLI commands, snapshots the run, and creates a zip archive of
+the generated experiment outputs.

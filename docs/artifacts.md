@@ -107,6 +107,11 @@ clobbered by re-running the script.
 A `manifest.json` is written alongside `README.md` for downstream
 tooling. `CONCLUSION.md` is intentionally **not** auto-generated.
 
+The Google Colab notebook `notebooks/full_experiment_colab.ipynb` runs the
+same snapshot script after the full experiment and zips the resulting
+`runs/<run_id>/` folder under `exports/`. Copying that archive to Google
+Drive is recommended for large full-run outputs.
+
 ### Delta runs + merged snapshots
 
 When a methodology change affects only some models, retraining the
