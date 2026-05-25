@@ -212,7 +212,7 @@ worker process.
 
 ```yaml
 training:
-  horizon_workers: 3
+  horizon_workers: 1
   torch_threads_per_worker: 2
 ```
 
@@ -222,8 +222,8 @@ training:
   PyTorch/CUDA initialization on Linux.
 - Workers are capped at `min(configured, n_horizons, cpu_count)`, so
   `horizon_workers: 16` on a 6-horizon run with 8 CPUs collapses to 6.
-  The shipped dissertation configs use `3` rather than `6` because scaler
-  application still materializes wide float64 frames per worker.
+  The shipped dissertation configs use `1` because scaler application still
+  materializes wide float64 frames per worker.
 - When `horizon_workers > 1` the pipeline forces `RandomForestRegressor`
   to `n_jobs=1` to avoid outer × inner CPU oversubscription.
 - `torch_threads_per_worker` caps each worker's BLAS/MKL/PyTorch thread
@@ -233,7 +233,7 @@ training:
   which should be at most `cpu_count`. Setting the YAML key to `null`
   or omitting it activates the auto-formula
   `max(1, cpu_count // horizon_workers)`. The default config ships with
-  `horizon_workers: 3` and `torch_threads_per_worker: 2` for the
+  `horizon_workers: 1` and `torch_threads_per_worker: 2` for the
   dissertation's target host (CHANGES.md 2026-05-25).
 - Each worker reloads `data/interim/prepared.parquet` from disk on
   start. The main process therefore prepares the data once (`ingest`,

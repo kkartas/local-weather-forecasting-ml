@@ -169,7 +169,7 @@ multiple horizons in parallel:
 
 ```yaml
 training:
-  horizon_workers: 3
+  horizon_workers: 1
   torch_threads_per_worker: 2
 ```
 
@@ -180,9 +180,9 @@ capped at `min(horizon_workers, n_horizons, cpu_count)`. Recommended
 values:
 
 - `1` on laptops and shared machines.
-- `2` to `3` on the dissertation run for the current target host. Higher
-  values may work on machines with substantially more RAM, but `6` workers
-  can fail while MetDataPy applies the wide float64 scaler frames.
+- Use `1` on the current dissertation host. Higher values may work on
+  machines with substantially more RAM, but multiple workers can fail while
+  MetDataPy applies the wide float64 scaler frames.
 - Avoid running two parallel `train` invocations against the same
   `artifacts/` directory at the same time; per-horizon files are
   write-isolated by horizon label, but the merged

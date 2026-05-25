@@ -42,15 +42,15 @@ Use this file only for changes affecting methodology, experimental design, or sc
   `configs/default.yaml`, `configs/default_delta.yaml`,
   `docs/training.md`, `docs/configuration.md`.
 - What changed:
-  The shipped full-run configs now use `training.horizon_workers: 3`
+  The shipped full-run configs now use `training.horizon_workers: 1`
   instead of `6`, while keeping `torch_threads_per_worker: 2`.
 - Why it changed:
   Even with BLAS/PyTorch threads capped, each horizon worker applies the
   MetDataPy scaler to a wide float64 feature frame before model fitting.
   Running all six horizons concurrently can require several simultaneous
   ~390-420 MiB temporary arrays and fail on the dissertation target host.
-  Three workers preserves parallelism while leaving enough RAM headroom for
-  scaling, ridge fitting, and overlapping DL startup.
+  Sequential horizon training removes that concurrent memory pressure for
+  scaling, ridge fitting, and DL startup.
 - Methodology impact:
   None. The worker count only changes wall-clock scheduling; data,
   targets, horizons, splits, scalers, models, and metrics are unchanged.
@@ -118,7 +118,7 @@ Use this file only for changes affecting methodology, experimental design, or sc
   `torch.set_num_threads()` before any model code runs. The default
   config initially set `horizon_workers: 6` and `torch_threads_per_worker: 2`
   for the dissertation's 12-logical-CPU target host; the later RAM-stability
-  entry reduced the shipped worker count to `3`.
+  entry reduced the shipped worker count to `1`.
 - Why it changed:
   Run 180526 used `horizon_workers: 4` on a 12-CPU host because the
   codebase had no thread-cap mechanism and bumping to 6 workers would

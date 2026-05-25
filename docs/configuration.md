@@ -124,7 +124,7 @@ training:
   patience: 10
   grad_clip_norm: 1.0
   min_dl_train_rows: 300
-  horizon_workers: 3
+  horizon_workers: 1
   torch_threads_per_worker: 2
   progress_heartbeat_seconds: 60
   progress_log_epochs: true
@@ -164,9 +164,10 @@ horizons:
   `min(horizon_workers, n_horizons, cpu_count)`, and `RandomForestRegressor`
   is forced to `n_jobs=1` so the inner-loop sklearn parallelism does not
   collide with the outer process pool.
-  The shipped full-run configs use `3` workers because the MetDataPy scaler
-  currently applies to a wide float64 feature frame inside each worker; `6`
-  workers can exceed RAM on the target host even when CPU threads are capped.
+  The shipped full-run configs use `1` worker because the MetDataPy scaler
+  currently applies to a wide float64 feature frame inside each worker;
+  multiple workers can exceed RAM on the target host even when CPU threads
+  are capped.
 - `progress_heartbeat_seconds` (default `60`) controls ML heartbeat
   interval during blocking `.fit()` calls. Set to `0` to disable ML
   heartbeat progress lines.

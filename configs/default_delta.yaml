@@ -80,7 +80,7 @@ training:
   patience: 10
   grad_clip_norm: 1.0
   min_dl_train_rows: 300
-  horizon_workers: 3
+  horizon_workers: 1
   torch_threads_per_worker: 2
   progress_heartbeat_seconds: 60
   progress_log_epochs: true

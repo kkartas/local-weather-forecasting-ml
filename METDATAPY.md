@@ -20,8 +20,8 @@ Current installed version inspected: `metdatapy==1.3.0`.
   these wide frames, which can allocate ~390-420 MiB temporary float64 blocks
   per worker and exhaust RAM before model fitting begins.
 - Workaround in this repository:
-  The shipped full-run configs use `training.horizon_workers: 3` instead of
-  running all six horizons concurrently. The forecasting repository still
+  The shipped full-run configs use `training.horizon_workers: 1` instead of
+  running horizons concurrently. The forecasting repository still
   delegates scaler fitting and transformation to MetDataPy.
 - Expected input:
   A fitted MetDataPy scaler plus a pandas dataframe of numeric feature
@@ -36,8 +36,8 @@ Current installed version inspected: `metdatapy==1.3.0`.
 - Priority:
   High
 - Blocking status:
-  Does not block the current repository when `horizon_workers` is kept at 3,
-  but blocks reliable six-horizon parallel training on the target machine.
+  Does not block the current repository when `horizon_workers` is kept at 1,
+  but blocks reliable parallel horizon training on the target machine.
 - Forecasting pipeline usage:
   `weather_forecasting_pipeline.metdatapy_adapter.fit_apply_scaler_with_metdatapy`
   delegates feature scaling to MetDataPy.

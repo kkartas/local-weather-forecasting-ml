@@ -69,11 +69,11 @@ training:
   # full pipeline in its own worker process and are capped at
   # ``min(value, n_horizons, cpu_count)``. When >1 the random forest is
   # forced to ``n_jobs=1`` to avoid outer x inner CPU oversubscription.
-  # Keep below the full six-horizon count because each worker applies the
-  # MetDataPy scaler to a wide float64 feature frame before model fitting.
-  # Higher values may work on larger RAM hosts but can fail on the target
-  # dissertation machine.
-  horizon_workers: 3
+  # Keep sequential by default because each worker applies the MetDataPy
+  # scaler to a wide float64 feature frame before model fitting. Higher values
+  # may work on larger RAM hosts but can fail on the target dissertation
+  # machine.
+  horizon_workers: 1
   # Cap each worker's BLAS/MKL/PyTorch thread pool so N workers x M inner
   # threads do not contend on the same CPU set. ``null`` would auto-resolve
   # to ``max(1, cpu_count // horizon_workers)``; we set 2 explicitly to keep
