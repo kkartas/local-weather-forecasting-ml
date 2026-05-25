@@ -45,11 +45,12 @@ def test_ridge_smoke(synthetic_station_frame):
     """``ridge`` is the new default linear baseline (CHANGES.md 2026-05-25).
 
     Exercises the full fit/predict path so a regression in
-    ``make_ml_model("ridge", ...)`` is caught by the test suite. ``RidgeCV``
-    is expected to expose ``alpha_`` after fit, which is a cheap sanity
-    check that cross-validation actually ran.
+    ``make_ml_model("ridge", ...)`` is caught by the test suite. The ridge
+    wrapper uses chronological folds and is expected to expose ``alpha_``
+    after fit, which is a cheap sanity check that cross-validation actually
+    ran.
     """
-    from sklearn.linear_model import RidgeCV
+    from weather_forecasting_pipeline.models.ml_models import ChronologicalRidgeCV
 
     supervised = make_supervised_with_metdatapy(
         synthetic_station_frame, target="temp_c", horizons=[3], lags=[1, 3]
@@ -61,7 +62,9 @@ def test_ridge_smoke(synthetic_station_frame):
     x_train, y_train = arrays_from_split(splits["train"], features, target_col)
     x_test, _ = arrays_from_split(splits["test"], features, target_col)
     model = make_ml_model("ridge", random_seed=42)
-    assert isinstance(model, RidgeCV)
+    assert isinstance(model, ChronologicalRidgeCV)
+    assert model.n_splits == 5
+    assert model.solver == "lsqr"
     model.fit(x_train, y_train)
     pred = model.predict(x_test)
     assert pred.shape[0] == x_test.shape[0]

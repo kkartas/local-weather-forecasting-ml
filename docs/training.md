@@ -38,8 +38,10 @@ Implemented in `weather_forecasting_pipeline.models.ml_models`.
 
 Supported names:
 
-- `ridge` (default linear baseline; `RidgeCV` with α ∈ {0.1, 1, 10, 100},
-  leave-one-out CV on the training partition only)
+- `ridge` (default linear baseline; ridge regression with alpha in
+  `{0.1, 1, 10, 100}`, selected by five chronological expanding-window folds
+  on the training partition only; implemented with an `lsqr` solver to keep
+  full-size parallel runs memory-stable)
 - `random_forest`
 - `gradient_boosting`
 - `linear_regression` (legacy OLS; retained for run 180526 reproduction
@@ -200,16 +202,17 @@ early stopping:
 ## Parallel Horizon Training
 
 Long full-config runs were historically dominated by single-threaded RBF
-`SVR` per horizon (now removed from the default roster — see CHANGES.md
-2026-05-25); `RandomForestRegressor` is the remaining slowest fit on most
-configurations. Set `training.horizon_workers` greater than `1` to run each
+`SVR` per horizon (now removed from the default roster; see CHANGES.md
+2026-05-25). `RandomForestRegressor` and deep-learning fits are the
+remaining slow stages on most configurations. Set `training.horizon_workers`
+greater than `1` to run each
 horizon's full per-horizon pipeline (supervised build, split, scalers,
 baselines, ML, DL, predictions, and per-horizon artifacts) in its own
 worker process.
 
 ```yaml
 training:
-  horizon_workers: 6
+  horizon_workers: 3
   torch_threads_per_worker: 2
 ```
 
@@ -219,6 +222,8 @@ training:
   PyTorch/CUDA initialization on Linux.
 - Workers are capped at `min(configured, n_horizons, cpu_count)`, so
   `horizon_workers: 16` on a 6-horizon run with 8 CPUs collapses to 6.
+  The shipped dissertation configs use `3` rather than `6` because scaler
+  application still materializes wide float64 frames per worker.
 - When `horizon_workers > 1` the pipeline forces `RandomForestRegressor`
   to `n_jobs=1` to avoid outer × inner CPU oversubscription.
 - `torch_threads_per_worker` caps each worker's BLAS/MKL/PyTorch thread
@@ -228,8 +233,8 @@ training:
   which should be at most `cpu_count`. Setting the YAML key to `null`
   or omitting it activates the auto-formula
   `max(1, cpu_count // horizon_workers)`. The default config ships with
-  `horizon_workers: 6` and `torch_threads_per_worker: 2` for the
-  dissertation's 12-CPU target host (CHANGES.md 2026-05-25).
+  `horizon_workers: 3` and `torch_threads_per_worker: 2` for the
+  dissertation's target host (CHANGES.md 2026-05-25).
 - Each worker reloads `data/interim/prepared.parquet` from disk on
   start. The main process therefore prepares the data once (`ingest`,
   `preprocess`) and spawns workers only for `train`.

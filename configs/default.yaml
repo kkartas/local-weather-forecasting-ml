@@ -43,8 +43,9 @@ scaling:
 models:
   # Roster updated 2026-05-25 (CHANGES.md):
   #   - svr removed (never won; negative skill on 3/6 horizons in run 180526)
-  #   - linear_regression → ridge (RidgeCV with α ∈ {0.1, 1, 10, 100}) to
-  #     remove the RMSE explosion observed on the wide lag matrix in run 180526.
+  #   - linear_regression -> ridge (alpha in {0.1, 1, 10, 100}, selected by
+  #     chronological folds and fit with an lsqr solver) to remove the RMSE
+  #     explosion observed on the wide lag matrix in run 180526.
   baselines: [persistence, moving_average, climatology]
   ml: [ridge, random_forest, gradient_boosting]
   dl: [lstm, gru, tcn]
@@ -68,13 +69,15 @@ training:
   # full pipeline in its own worker process and are capped at
   # ``min(value, n_horizons, cpu_count)``. When >1 the random forest is
   # forced to ``n_jobs=1`` to avoid outer x inner CPU oversubscription.
-  # Bumped 4 -> 6 on 2026-05-25 (CHANGES.md) now that all 6 horizons can
-  # run concurrently after the SVR removal slashed the per-horizon time.
-  horizon_workers: 6
-  # Cap each worker's BLAS/MKL/PyTorch thread pool so 6 workers x N inner
+  # Keep below the full six-horizon count because each worker applies the
+  # MetDataPy scaler to a wide float64 feature frame before model fitting.
+  # Higher values may work on larger RAM hosts but can fail on the target
+  # dissertation machine.
+  horizon_workers: 3
+  # Cap each worker's BLAS/MKL/PyTorch thread pool so N workers x M inner
   # threads do not contend on the same CPU set. ``null`` would auto-resolve
-  # to ``max(1, cpu_count // horizon_workers)``; we set 2 explicitly to make
-  # the budget visible in the YAML (12-core target host: 6 x 2 = 12).
+  # to ``max(1, cpu_count // horizon_workers)``; we set 2 explicitly to keep
+  # the worker RAM and CPU budget conservative on the target host.
   torch_threads_per_worker: 2
   progress_heartbeat_seconds: 60
   progress_log_epochs: true

@@ -4,6 +4,60 @@ This file records divergences between the written dissertation methodology and t
 
 Use this file only for changes affecting methodology, experimental design, or scientific assumptions. General implementation notes and missing MetDataPy features belong elsewhere.
 
+## 2026-05-25 - Ridge uses chronological folds and an iterative solver
+
+- Affected component:
+  `weather_forecasting_pipeline.models.ml_models.make_ml_model`,
+  `docs/training.md`, `docs/configuration.md`.
+- What changed:
+  The `ridge` model still uses the same alpha grid
+  `{0.1, 1.0, 10.0, 100.0}`, but alpha selection now uses
+  `TimeSeriesSplit(n_splits=5)` with RMSE scoring on the training
+  partition. The final model and each CV fold use
+  `sklearn.linear_model.Ridge(solver="lsqr")`.
+- Why it changed:
+  The default RidgeCV path calls an SVD-based generalized cross-validation
+  routine. On the full dissertation design matrix (~95k training rows by
+  576 features per horizon), six parallel horizon workers triggered
+  float64 work-array allocation failures and LAPACK `gesdd`
+  initialization failures. Chronological expanding-window folds keep
+  hyperparameter selection inside the training partition, preserve the
+  no-shuffle time-series rule, and the iterative `lsqr` solver avoids the
+  memory-heavy dense SVD/Cholesky paths.
+- Methodology impact:
+  Ridge remains the regularised linear baseline and uses the same alpha
+  candidates, but the internal alpha-selection protocol changes from
+  leave-one-out RidgeCV to five chronological folds with an iterative
+  solver. Baselines, tree ensembles, DL models, forecast targets,
+  horizons, splits, and metrics are unchanged.
+- Dissertation update required:
+  Yes. Where the linear baseline is described, state that ridge alpha is
+  selected from `{0.1, 1, 10, 100}` using five chronological
+  expanding-window folds on the training partition and fit with the
+  iterative `lsqr` solver.
+
+## 2026-05-25 - Default horizon worker count reduced for RAM stability
+
+- Affected component:
+  `configs/default.yaml`, `configs/default_delta.yaml`,
+  `docs/training.md`, `docs/configuration.md`.
+- What changed:
+  The shipped full-run configs now use `training.horizon_workers: 3`
+  instead of `6`, while keeping `torch_threads_per_worker: 2`.
+- Why it changed:
+  Even with BLAS/PyTorch threads capped, each horizon worker applies the
+  MetDataPy scaler to a wide float64 feature frame before model fitting.
+  Running all six horizons concurrently can require several simultaneous
+  ~390-420 MiB temporary arrays and fail on the dissertation target host.
+  Three workers preserves parallelism while leaving enough RAM headroom for
+  scaling, ridge fitting, and overlapping DL startup.
+- Methodology impact:
+  None. The worker count only changes wall-clock scheduling; data,
+  targets, horizons, splits, scalers, models, and metrics are unchanged.
+- Dissertation update required:
+  No, unless the implementation chapter reports the exact parallel worker
+  count used for the final run.
+
 ## 2026-05-25 - Reuse unchanged-model artifacts via delta-run + merge
 
 - Affected component:
@@ -62,15 +116,16 @@ Use this file only for changes affecting methodology, experimental design, or sc
   null). The worker initializer exports `OMP_NUM_THREADS`,
   `MKL_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, and calls
   `torch.set_num_threads()` before any model code runs. The default
-  config now sets `horizon_workers: 6` and `torch_threads_per_worker: 2`
-  for the dissertation's 12-logical-CPU target host.
+  config initially set `horizon_workers: 6` and `torch_threads_per_worker: 2`
+  for the dissertation's 12-logical-CPU target host; the later RAM-stability
+  entry reduced the shipped worker count to `3`.
 - Why it changed:
   Run 180526 used `horizon_workers: 4` on a 12-CPU host because the
   codebase had no thread-cap mechanism and bumping to 6 workers would
   have let each PyTorch worker grab all 12 cores, producing severe
   outer x inner oversubscription (6 workers x 12 BLAS threads = 72
-  threads competing for 12 cores). With the cap in place, 6 workers x
-  2 threads = 12 threads cleanly mapped to 12 cores. This is the
+  threads competing for 12 cores). With the cap in place, workers can be
+  mapped cleanly to the available cores. This is the
   standard pattern for running multiple ML/DL processes on a single
   shared machine and is required for the dissertation's per-horizon
   parallelism to scale to the full horizon count.
@@ -119,18 +174,17 @@ Use this file only for changes affecting methodology, experimental design, or sc
   of consistent under-performance and intractable compute cost on the
   full training set.
 
-## 2026-05-25 - Linear regression replaced with RidgeCV
+## 2026-05-25 - Linear regression replaced with ridge regularisation
 
 - Affected component:
   `weather_forecasting_pipeline.models.ml_models.make_ml_model`,
   `configs/default.yaml`, `configs/smoke.yaml`.
 - What changed:
-  Added a `ridge` ML model that constructs an `sklearn.linear_model.RidgeCV`
-  with `alphas=(0.1, 1.0, 10.0, 100.0)` (efficient leave-one-out CV on the
-  training split). The default configuration now lists `ridge` in place of
-  `linear_regression`. The `linear_regression` factory is retained for
-  backwards compatibility with run 180526 reproduction but is no longer the
-  default linear baseline.
+  Added a `ridge` ML model using `alphas=(0.1, 1.0, 10.0, 100.0)` (see the
+  later 2026-05-25 entry for the current chronological CV rule). The
+  default configuration now lists `ridge` in place of `linear_regression`.
+  The `linear_regression` factory is retained for backwards compatibility
+  with run 180526 reproduction but is no longer the default linear baseline.
 - Why it changed:
   Run 180526's `linear_regression` produced MAE values in line with the
   rest of the field (0.40–2.37 °C) but **RMSE values of 7.7, 13.4, 12.4 and
@@ -145,10 +199,11 @@ Use this file only for changes affecting methodology, experimental design, or sc
   are unaffected. Run 180526 remains the cited evidence base for the
   substitution.
 - Dissertation update required:
-  Yes. Document the substitution in the methodology chapter (RidgeCV with
-  α ∈ {0.1, 1, 10, 100}, leave-one-out CV on the training partition only).
-  In the results comparison, note that the OLS variant exhibited the RMSE
-  explosion and that ridge regularisation is the response.
+  Yes. Document the substitution in the methodology chapter (ridge with
+  alpha in `{0.1, 1, 10, 100}`, selected by chronological folds on the
+  training partition only). In the results comparison, note that the OLS
+  variant exhibited the RMSE explosion and that ridge regularisation is the
+  response.
 
 ## 2026-05-25 - Deep-learning training stability: longer patience, LR scheduler, gradient clipping
 

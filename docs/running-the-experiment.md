@@ -124,10 +124,10 @@ The default configuration trains:
 
 - horizons: `m10`, `h01`, `h03`, `h06`, `h12`, `h24`
 - baselines: `persistence`, `moving_average`, `climatology`
-- ML models: `linear_regression`, `random_forest`, `gradient_boosting`, `svr`
+- ML models: `ridge`, `random_forest`, `gradient_boosting`
 - DL models: `lstm`, `gru`, `tcn`
 
-Each model is trained independently for each horizon. The run can take significantly longer than the smoke check because the default configuration uses 24-hour sequences, more horizons, more models, and up to 20 DL epochs.
+Each model is trained independently for each horizon. The run can take significantly longer than the smoke check because the default configuration uses 24-hour sequences, more horizons, more models, and up to 40 DL epochs.
 
 Deep-learning models are skipped for a horizon if the training split has fewer rows than `training.min_dl_train_rows`.
 
@@ -149,13 +149,14 @@ wide DL feature set; expect RAM usage to scale to many GiB at the default
 
 ### Parallel Horizon Training
 
-Long full-config runs are dominated by single-threaded RBF `SVR` per
-horizon. Set `training.horizon_workers` greater than `1` to train
+Long full-config runs benefit from training the six horizons in separate
+worker processes. Set `training.horizon_workers` greater than `1` to train
 multiple horizons in parallel:
 
 ```yaml
 training:
-  horizon_workers: 4
+  horizon_workers: 3
+  torch_threads_per_worker: 2
 ```
 
 Each worker is a separate Python process and runs the full per-horizon
@@ -164,9 +165,10 @@ predictions, and per-horizon artifacts) end-to-end. The pool is
 capped at `min(horizon_workers, n_horizons, cpu_count)`. Recommended
 values:
 
-- `1` (default) on laptops and shared machines.
-- `2`–`4` on a 6-horizon dissertation run, depending on available
-  cores. Each worker still fits an SVR with all training rows.
+- `1` on laptops and shared machines.
+- `2` to `3` on the dissertation run for the current target host. Higher
+  values may work on machines with substantially more RAM, but `6` workers
+  can fail while MetDataPy applies the wide float64 scaler frames.
 - Avoid running two parallel `train` invocations against the same
   `artifacts/` directory at the same time; per-horizon files are
   write-isolated by horizon label, but the merged

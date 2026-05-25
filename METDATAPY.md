@@ -8,6 +8,42 @@ Current installed version inspected: `metdatapy==1.3.0`.
 
 ## Active Missing Or Incomplete Features
 
+### 2026-05-25 - Memory-efficient scaler application for wide ML frames
+
+- Required feature:
+  Apply a fitted MetDataPy scaler to wide, long ML feature frames without
+  materializing a full float64 copy of every scaled column in memory at once.
+- Reason:
+  The dissertation supervised frames contain roughly 95k training rows and
+  540-576 numeric feature columns per horizon. Under parallel horizon
+  training, `metdatapy.mlprep.apply_scaler()` currently calls `df.copy()` on
+  these wide frames, which can allocate ~390-420 MiB temporary float64 blocks
+  per worker and exhaust RAM before model fitting begins.
+- Workaround in this repository:
+  The shipped full-run configs use `training.horizon_workers: 3` instead of
+  running all six horizons concurrently. The forecasting repository still
+  delegates scaler fitting and transformation to MetDataPy.
+- Expected input:
+  A fitted MetDataPy scaler plus a pandas dataframe of numeric feature
+  columns with tens of thousands of rows and hundreds of columns.
+- Expected output:
+  A scaled dataframe or array with the same values as `apply_scaler()`, with
+  optional float32 output and bounded peak memory.
+- Suggested API:
+  Add an option such as `apply_scaler(..., dtype="float32", copy=False)` or a
+  chunked/column-wise transformer that avoids consolidating the full float64
+  block. A NumPy-array output mode would also be suitable for ML pipelines.
+- Priority:
+  High
+- Blocking status:
+  Does not block the current repository when `horizon_workers` is kept at 3,
+  but blocks reliable six-horizon parallel training on the target machine.
+- Forecasting pipeline usage:
+  `weather_forecasting_pipeline.metdatapy_adapter.fit_apply_scaler_with_metdatapy`
+  delegates feature scaling to MetDataPy.
+- Dissertation update required:
+  No. This is an implementation scalability issue, not a methodology change.
+
 ### 2026-05-16 - Tolerant parsing for surplus trailing Weathercloud fields
 
 - Required feature:

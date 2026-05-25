@@ -7,7 +7,8 @@
 #   - gradient_boosting (seeded, identical config -> bit-identical output)
 #
 # Retrained here:
-#   - ridge (new model, replaces linear_regression which had RMSE explosion)
+#   - ridge (new model, replaces linear_regression which had RMSE explosion;
+#     alpha selected by chronological folds inside the training split)
 #   - lstm, gru, tcn (DL stability bundle: max_epochs 40, patience 10,
 #     ReduceLROnPlateau scheduler, gradient clipping)
 #
@@ -79,7 +80,7 @@ training:
   patience: 10
   grad_clip_norm: 1.0
   min_dl_train_rows: 300
-  horizon_workers: 6
+  horizon_workers: 3
   torch_threads_per_worker: 2
   progress_heartbeat_seconds: 60
   progress_log_epochs: true
