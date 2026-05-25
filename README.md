@@ -125,7 +125,7 @@ python -m weather_forecasting_pipeline train --config configs/default.yaml
 python -m weather_forecasting_pipeline evaluate --config configs/default.yaml
 ```
 
-Clean previously-generated outputs (`data/interim/`, `data/processed/`, and the `artifacts/` subtrees) without removing raw data:
+Clean previously-generated outputs (`data/interim/`, `data/processed/`, and the `artifacts/` subtrees) without removing raw data. Cleanup recreates the empty tracked directory skeleton with `.gitkeep` placeholders:
 
 ```powershell
 python -m weather_forecasting_pipeline clean --config configs/default.yaml

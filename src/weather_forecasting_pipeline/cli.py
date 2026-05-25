@@ -65,14 +65,9 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _resolve_generated_paths(config: ExperimentConfig) -> list[Path]:
-    """Return the configured generated paths that exist on disk.
-
-    Raw data (``config.paths.raw_data_dir``) and YAML configurations are
-    intentionally excluded so cleanup never removes the source-of-truth
-    Weathercloud exports a contributor placed in ``data/raw/``.
-    """
-    candidates = [
+def _configured_generated_dirs(config: ExperimentConfig) -> list[Path]:
+    """Return configured directories that contain generated pipeline outputs."""
+    return [
         config.paths.interim_dir,
         config.paths.processed_dir,
         config.paths.artifacts_dir / "models",
@@ -81,7 +76,31 @@ def _resolve_generated_paths(config: ExperimentConfig) -> list[Path]:
         config.paths.artifacts_dir / "plots",
         config.paths.artifacts_dir / "reports",
     ]
-    return [p for p in candidates if p.exists()]
+
+
+def _resolve_generated_paths(config: ExperimentConfig) -> list[Path]:
+    """Return the configured generated paths that exist on disk.
+
+    Raw data (``config.paths.raw_data_dir``) and YAML configurations are
+    intentionally excluded so cleanup never removes the source-of-truth
+    Weathercloud exports a contributor placed in ``data/raw/``.
+    """
+    return [p for p in _configured_generated_dirs(config) if p.exists()]
+
+
+def _restore_generated_placeholders(config: ExperimentConfig) -> None:
+    """Recreate tracked ``.gitkeep`` placeholders after cleanup."""
+    raw_dir = config.paths.raw_data_dir.resolve()
+    for path in _configured_generated_dirs(config):
+        resolved = path.resolve()
+        if resolved == raw_dir or raw_dir in resolved.parents:
+            LOGGER.warning("Refusing to create placeholder inside raw data directory: %s", resolved)
+            continue
+        if resolved.exists() and not resolved.is_dir():
+            LOGGER.warning("Cannot create placeholder because path is not a directory: %s", resolved)
+            continue
+        resolved.mkdir(parents=True, exist_ok=True)
+        (resolved / ".gitkeep").write_bytes(b"\n")
 
 
 def _clean_generated_outputs(config: ExperimentConfig) -> None:
@@ -127,6 +146,7 @@ def _clean_generated_outputs(config: ExperimentConfig) -> None:
                         child.unlink()
                 except PermissionError as child_exc:
                     LOGGER.warning("Skipping locked child %s: %s", child, child_exc)
+    _restore_generated_placeholders(config)
 
 
 def main(argv: list[str] | None = None) -> None:

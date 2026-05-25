@@ -280,10 +280,11 @@ python -m weather_forecasting_pipeline clean --config configs/default.yaml
 python -m weather_forecasting_pipeline run-all --config configs/default.yaml --fresh
 ```
 
-`--fresh` is also valid on `train`. Both forms only delete paths
+`--fresh` is also valid on `train`. Both forms only clear paths
 configured in the YAML (`paths.interim_dir`, `paths.processed_dir`, and
 the `models/`, `scalers/`, `metrics/`, `plots/`, `reports/` subtrees of
-`paths.artifacts_dir`). The raw data directory is never touched.
+`paths.artifacts_dir`) and then recreate their `.gitkeep` placeholders.
+The raw data directory is never touched.
 
 ## 11. Common Problems
 

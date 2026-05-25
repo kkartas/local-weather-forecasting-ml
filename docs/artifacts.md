@@ -147,10 +147,11 @@ Generated outputs can be removed safely between runs:
 python -m weather_forecasting_pipeline clean --config configs/default.yaml
 ```
 
-`clean` and `--fresh` (on `train` / `run-all`) delete only the
-configured `paths.interim_dir`, `paths.processed_dir`, and the
-`models/`, `scalers/`, `metrics/`, `plots/`, `reports/` subtrees of
-`paths.artifacts_dir`. The raw data directory is never touched. See
+`clean` and `--fresh` (on `train` / `run-all`) clear only the configured
+`paths.interim_dir`, `paths.processed_dir`, and the `models/`, `scalers/`,
+`metrics/`, `plots/`, `reports/` subtrees of `paths.artifacts_dir`, then
+recreate those directories with `.gitkeep` placeholders. The raw data
+directory is never touched. See
 `docs/running-the-experiment.md#cleaning-generated-outputs-between-runs`
 for guidance on when to clean.
 

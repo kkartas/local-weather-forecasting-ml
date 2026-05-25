@@ -62,7 +62,8 @@ Current test coverage includes:
   `metrics.csv` with the same rows as the sequential run
   (`tests/test_parallel_horizons.py`)
 - artifact cleanup: `clean` subcommand and `--fresh` flag remove only
-  generated outputs and leave raw data intact
+  generated outputs, recreate `.gitkeep` placeholders, and leave raw data
+  intact
   (`tests/test_pipeline_artifacts.py`)
 
 ## Run Snapshots

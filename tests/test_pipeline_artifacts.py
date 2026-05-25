@@ -166,12 +166,14 @@ def test_resolved_horizons_includes_optional(smoke_environment):
 
 
 def test_clean_command_removes_generated_outputs_only(smoke_environment):
-    """``clean`` must wipe interim, processed, and artifact subtrees only.
+    """``clean`` must wipe outputs and restore tracked placeholders.
 
     The raw data directory contains the Weathercloud exports that drive every
     experiment, so it is intentionally outside the scope of cleanup. The clean
     command also stays scoped to the configured paths so a misconfigured
-    artifacts directory cannot remove unrelated user files.
+    artifacts directory cannot remove unrelated user files. The empty
+    directory skeleton is recreated because Git tracks these paths through
+    ``.gitkeep`` placeholders.
     """
     config_path, config = smoke_environment
 
@@ -181,9 +183,19 @@ def test_clean_command_removes_generated_outputs_only(smoke_environment):
 
     cli_main(["clean", "--config", str(config_path)])
 
-    assert not config.paths.interim_dir.exists()
-    assert not config.paths.processed_dir.exists()
-    assert not (config.paths.artifacts_dir / "metrics").exists()
+    placeholder_dirs = [
+        config.paths.interim_dir,
+        config.paths.processed_dir,
+        config.paths.artifacts_dir / "models",
+        config.paths.artifacts_dir / "scalers",
+        config.paths.artifacts_dir / "metrics",
+        config.paths.artifacts_dir / "plots",
+        config.paths.artifacts_dir / "reports",
+    ]
+    for path in placeholder_dirs:
+        assert path.is_dir()
+        assert sorted(child.name for child in path.iterdir()) == [".gitkeep"]
+        assert (path / ".gitkeep").read_bytes() == b"\n"
     # Raw inputs must remain untouched.
     assert config.paths.raw_data_dir.exists()
     assert sorted(p.name for p in config.paths.raw_data_dir.iterdir()) == sorted(p.name for p in raw_files)
