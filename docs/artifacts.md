@@ -98,6 +98,11 @@ runs/<run_id>/plots/
                            skill_score_heatmap / best_per_family
 ```
 
+Snapshot time-series plots use a contiguous prediction block by default,
+and callers may pass an explicit display window to
+`SnapshotPaths(timeseries_start=..., timeseries_end=...)` when a known
+data outage would make the default visual sample unsuitable.
+
 Flags `--skip-svr-models`, `--skip-supervised`, `--skip-interim`, and
 `--no-plots` let you trim the snapshot for size when needed. `--force`
 overwrites an existing snapshot but **preserves an existing

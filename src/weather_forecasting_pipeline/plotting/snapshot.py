@@ -101,6 +101,9 @@ class SnapshotPaths:
     horizons: Sequence[str] = field(default_factory=lambda: DEFAULT_HORIZONS)
     focus_models: Sequence[str] = field(default_factory=lambda: DEFAULT_FOCUS_MODELS)
     model_order: Sequence[str] = field(default_factory=lambda: DEFAULT_MODEL_ORDER)
+    timeseries_start: str | pd.Timestamp | None = None
+    timeseries_end: str | pd.Timestamp | None = None
+    timeseries_max_gap: str | pd.Timedelta = "1h"
 
     def actual_vs_predicted_dir(self) -> Path:
         return self.plots_dir / "actual_vs_predicted"
@@ -148,21 +151,84 @@ def _plot_scatter(out: Path, model: str, horizon: str, df: pd.DataFrame) -> None
     plt.close(fig)
 
 
-def _plot_timeseries(out: Path, model: str, horizon: str, df: pd.DataFrame, max_points: int = 1500) -> None:
-    plt = _pyplot()
-    df = df.sort_values("ts_utc")
+def _coerce_plot_timestamp(value: str | pd.Timestamp, ts: pd.Series) -> pd.Timestamp:
+    """Match a configured timestamp to the timezone awareness of ``ts``."""
+    parsed = pd.Timestamp(value)
+    tz = getattr(ts.dt, "tz", None)
+    if tz is not None and parsed.tzinfo is None:
+        return parsed.tz_localize(tz)
+    if tz is None and parsed.tzinfo is not None:
+        return parsed.tz_convert("UTC").tz_localize(None)
+    return parsed
+
+
+def _select_timeseries_sample(
+    df: pd.DataFrame,
+    *,
+    max_points: int = 1500,
+    start: str | pd.Timestamp | None = None,
+    end: str | pd.Timestamp | None = None,
+    max_gap: str | pd.Timedelta = "1h",
+) -> tuple[pd.DataFrame, str]:
+    """Select a visually coherent sample for a prediction time-series plot."""
+    df = df.sort_values("ts_utc").copy()
+    if df.empty:
+        return df, "no points"
+
+    if start is not None:
+        df = df[df["ts_utc"] >= _coerce_plot_timestamp(start, df["ts_utc"])]
+    if end is not None:
+        df = df[df["ts_utc"] <= _coerce_plot_timestamp(end, df["ts_utc"])]
+
+    if df.empty:
+        raise ValueError("No prediction rows fall inside the requested time-series plot window.")
+
+    if start is None and end is None:
+        gap = pd.Timedelta(max_gap)
+        segments = df["ts_utc"].diff().gt(gap).cumsum()
+        stats = df.groupby(segments)["ts_utc"].agg(["min", "count"])
+        best_segment = stats.sort_values(["count", "min"], ascending=[False, True]).index[0]
+        df = df[segments == best_segment]
+
     if len(df) > max_points:
-        df = df.iloc[:max_points]
+        offset = max((len(df) - max_points) // 2, 0)
+        df = df.iloc[offset : offset + max_points]
+
+    first = df["ts_utc"].iloc[0].strftime("%Y-%m-%d")
+    last = df["ts_utc"].iloc[-1].strftime("%Y-%m-%d")
+    label = first if first == last else f"{first} to {last}"
+    return df, label
+
+
+def _plot_timeseries(
+    out: Path,
+    model: str,
+    horizon: str,
+    df: pd.DataFrame,
+    max_points: int = 1500,
+    *,
+    start: str | pd.Timestamp | None = None,
+    end: str | pd.Timestamp | None = None,
+    max_gap: str | pd.Timedelta = "1h",
+) -> None:
+    plt = _pyplot()
+    df, sample_label = _select_timeseries_sample(
+        df,
+        max_points=max_points,
+        start=start,
+        end=end,
+        max_gap=max_gap,
+    )
 
     fig, ax = plt.subplots(figsize=(11.0, 4.0))
     ax.plot(df["ts_utc"], df["y_true"], color="black", linewidth=0.9, label="Observed")
     ax.plot(df["ts_utc"], df["y_pred"], color="#d62728", linewidth=0.9, alpha=0.85, label="Predicted")
     ax.set_xlabel("Time (UTC)")
     ax.set_ylabel("Temperature (°C)")
-    ax.set_title(
-        f"{model} @ {HORIZON_LABELS.get(horizon, horizon)} — Test sample (first {len(df):,} points)"
-    )
     ax.grid(True, alpha=0.3)
+    ax.set_title(
+        f"{model} @ {HORIZON_LABELS.get(horizon, horizon)} - Test sample ({sample_label}, {len(df):,} points)"
+    )
     ax.legend(loc="best")
     fig.autofmt_xdate()
     fig.tight_layout()
@@ -350,7 +416,15 @@ def generate_snapshot_plots(paths: SnapshotPaths) -> dict[str, int]:
                 continue
             _plot_scatter(avp_dir / f"scatter_{model}_{horizon}.png", model, horizon, df)
             counter["scatter"] += 1
-            _plot_timeseries(avp_dir / f"timeseries_{model}_{horizon}.png", model, horizon, df)
+            _plot_timeseries(
+                avp_dir / f"timeseries_{model}_{horizon}.png",
+                model,
+                horizon,
+                df,
+                start=paths.timeseries_start,
+                end=paths.timeseries_end,
+                max_gap=paths.timeseries_max_gap,
+            )
             counter["timeseries"] += 1
             _plot_residuals(res_dir / f"residuals_{model}_{horizon}.png", model, horizon, df)
             counter["residuals"] += 1
