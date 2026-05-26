@@ -91,6 +91,13 @@ Main experiment configuration:
 configs/default.yaml
 ```
 
+Supplementary ML-only target configurations:
+
+```text
+configs/target_rh_ml.yaml
+configs/target_pres_ml.yaml
+```
+
 Smoke-test configuration:
 
 ```text
@@ -133,13 +140,29 @@ python -m weather_forecasting_pipeline clean --config configs/default.yaml
 python -m weather_forecasting_pipeline run-all --config configs/default.yaml --fresh
 ```
 
-Train horizons in parallel by setting `training.horizon_workers` in the YAML config (default `1` keeps the current sequential behaviour). See `docs/training.md` for details.
+Train horizons in parallel by setting `training.horizon_workers` in the YAML config. The default `1` keeps sequential training and is the safer setting on the dissertation host because each worker materializes the wide tabular ML matrix. See `docs/training.md` for details.
 
 Run the smaller smoke configuration:
 
 ```powershell
 python -m weather_forecasting_pipeline run-all --config configs/smoke.yaml
 ```
+
+Run supplementary ML-only checks for relative humidity and pressure:
+
+```powershell
+python -m weather_forecasting_pipeline run-all --config configs/target_rh_ml.yaml --fresh
+python scripts/snapshot_run.py --run-id <YYMMDD>_rh_ml
+
+python -m weather_forecasting_pipeline run-all --config configs/target_pres_ml.yaml --fresh
+python scripts/snapshot_run.py --run-id <YYMMDD>_pres_ml
+```
+
+These runs use the same observation-only data preparation, horizons,
+splits, lags, rolling windows, baselines, and core ML models as the main
+experiment, but change the target to `rh_pct` or `pres_hpa` and skip DL.
+Treat them as supplementary dissertation evidence, not as replacements
+for the primary temperature forecast experiment.
 
 Convenience wrapper:
 

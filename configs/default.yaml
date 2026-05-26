@@ -73,7 +73,7 @@ training:
   # scaler to a wide float64 feature frame before model fitting. Higher values
   # may work on larger RAM hosts but can fail on the target dissertation
   # machine.
-  horizon_workers: 3
+  horizon_workers: 1
   # Cap each worker's BLAS/MKL/PyTorch thread pool so N workers x M inner
   # threads do not contend on the same CPU set. ``null`` would auto-resolve
   # to ``max(1, cpu_count // horizon_workers)``; we set 2 explicitly to keep

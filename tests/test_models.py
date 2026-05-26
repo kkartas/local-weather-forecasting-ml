@@ -72,6 +72,24 @@ def test_ridge_smoke(synthetic_station_frame):
     assert model.alpha_ in (0.1, 1.0, 10.0, 100.0)
 
 
+def test_ridge_does_not_copy_center_feature_matrix():
+    """Ridge must avoid sklearn's full-matrix copy during full-data fits."""
+    from weather_forecasting_pipeline.models.ml_models import ChronologicalRidgeCV
+
+    rng = np.random.default_rng(123)
+    x_train = np.ascontiguousarray(rng.normal(size=(80, 12)).astype(np.float32))
+    y_train = (x_train[:, 0] * 0.4 - x_train[:, 3] * 0.2 + 5.0).astype(np.float32)
+    original = x_train.copy()
+
+    model = ChronologicalRidgeCV(n_splits=3)
+    model.fit(x_train, y_train)
+
+    assert np.array_equal(x_train, original)
+    assert model.estimator_.copy_X is False
+    assert model.estimator_.fit_intercept is False
+    assert np.isfinite(model.y_offset_)
+
+
 def test_unknown_ml_model_raises():
     """Removed/unknown model names must raise rather than silently fall through."""
     import pytest

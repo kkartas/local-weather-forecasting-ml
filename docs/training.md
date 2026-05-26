@@ -40,8 +40,9 @@ Supported names:
 
 - `ridge` (default linear baseline; ridge regression with alpha in
   `{0.1, 1, 10, 100}`, selected by five chronological expanding-window folds
-  on the training partition only; implemented with an `lsqr` solver to keep
-  full-size parallel runs memory-stable)
+  on the training partition only; implemented with an `lsqr` solver and
+  per-fold target centering so sklearn does not copy and center the full
+  wide feature matrix during each fit)
 - `random_forest`
 - `gradient_boosting`
 - `linear_regression` (legacy OLS; retained for run 180526 reproduction

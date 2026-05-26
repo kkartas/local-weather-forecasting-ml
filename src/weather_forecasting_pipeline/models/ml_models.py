@@ -25,7 +25,11 @@ class ChronologicalRidgeCV(BaseEstimator, RegressorMixin):
     the dissertation-scale feature matrix. This estimator keeps the same model
     family and alpha grid, but evaluates alpha values with expanding-window
     ``TimeSeriesSplit`` folds and fits ``Ridge(solver="lsqr")`` to avoid the
-    memory-heavy SVD/Cholesky routines.
+    memory-heavy SVD/Cholesky routines. The pipeline has already standardised
+    the features with a training-only scaler, so this wrapper centers the
+    target per fold and fits Ridge with ``fit_intercept=False``. That keeps an
+    intercept-equivalent offset without letting sklearn copy and center the
+    full wide feature matrix for every fit.
     """
 
     def __init__(
@@ -57,9 +61,8 @@ class ChronologicalRidgeCV(BaseEstimator, RegressorMixin):
                 for train_idx, val_idx in splitter.split(x):
                     train_sel = _contiguous_selector(train_idx)
                     val_sel = _contiguous_selector(val_idx)
-                    model = self._make_model(alpha)
-                    model.fit(x[train_sel], y_arr[train_sel])
-                    pred = model.predict(x[val_sel])
+                    model, y_offset = self._fit_model(alpha, x[train_sel], y_arr[train_sel])
+                    pred = model.predict(x[val_sel]) + y_offset
                     fold_scores.append(_rmse(y_arr[val_sel], pred))
                 cv_scores[float(alpha)] = float(np.mean(fold_scores))
             self.alpha_ = min(cv_scores, key=cv_scores.get)
@@ -70,18 +73,23 @@ class ChronologicalRidgeCV(BaseEstimator, RegressorMixin):
             cv_scores[self.alpha_] = np.nan
 
         self.cv_scores_ = cv_scores
-        self.estimator_ = self._make_model(self.alpha_)
-        self.estimator_.fit(x, y_arr)
+        self.estimator_, self.y_offset_ = self._fit_model(self.alpha_, x, y_arr)
         self.n_features_in_ = int(x.shape[1])
         return self
 
     def predict(self, X):
         check_is_fitted(self, "estimator_")
         x = np.asarray(X, dtype=np.float32, order="C")
-        return self.estimator_.predict(x)
+        return self.estimator_.predict(x) + self.y_offset_
 
     def _make_model(self, alpha: float) -> Ridge:
-        return Ridge(alpha=float(alpha), solver=self.solver, copy_X=True)
+        return Ridge(alpha=float(alpha), solver=self.solver, copy_X=False, fit_intercept=False)
+
+    def _fit_model(self, alpha: float, x: np.ndarray, y: np.ndarray) -> tuple[Ridge, float]:
+        y_offset = float(np.mean(y))
+        model = self._make_model(alpha)
+        model.fit(x, y - y_offset)
+        return model, y_offset
 
 
 def _contiguous_selector(index: np.ndarray) -> slice | np.ndarray:

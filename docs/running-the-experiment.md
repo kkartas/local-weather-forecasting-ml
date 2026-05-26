@@ -2,7 +2,7 @@
 
 This page is the step-by-step workflow for running the forecasting experiments from raw Weathercloud exports to dissertation-ready artifacts.
 
-Use `configs/smoke.yaml` only to verify that the software path works. Use `configs/default.yaml` for the real dissertation experiment.
+Use `configs/smoke.yaml` only to verify that the software path works. Use `configs/default.yaml` for the main dissertation temperature experiment. Use `configs/target_rh_ml.yaml` and `configs/target_pres_ml.yaml` only for supplementary ML-only target checks.
 
 ## 1. Prepare The Environment
 
@@ -155,7 +155,9 @@ per-split feature matrix (a few tens of MB) plus the per-batch tensor
 (`batch_size × sequence_length × n_dl_features × 4 B`, well under one
 megabyte at default settings). The full multi-year run no longer needs
 80 GiB of RAM to train DL models. Tabular ML and baselines continue to
-use the wide ~1.6k feature matrix and have not changed.
+use the wide ~1.6k feature matrix. Ridge uses a no-copy sklearn fit path,
+but tree ensembles still need substantial memory on the full tabular
+matrix.
 
 Set `data.dl_exclude_lag_features: false` in YAML to retain the legacy
 wide DL feature set; expect RAM usage to scale to many GiB at the default
@@ -226,7 +228,34 @@ python -m weather_forecasting_pipeline run-all --config configs/default.yaml
 
 This runs `ingest`, `preprocess`, `train`, and `evaluate` in order.
 
-## 9. Review Outputs
+## 9. Run Supplementary ML-Only Targets
+
+The repository also includes two short supplementary target configs:
+
+- `configs/target_rh_ml.yaml` forecasts relative humidity (`rh_pct`).
+- `configs/target_pres_ml.yaml` forecasts barometric pressure (`pres_hpa`).
+
+They keep the same Weathercloud-only inputs, horizons, lags, rolling
+windows, chronological split, scaling policy, baselines, and core ML
+models as the main experiment, but skip DL models to keep runtime low.
+Run them one at a time and snapshot the artifacts before starting the
+next target, because `data/interim/`, `data/processed/`, and `artifacts/`
+are shared output locations.
+
+```powershell
+python -m weather_forecasting_pipeline run-all --config configs/target_rh_ml.yaml --fresh
+python scripts/snapshot_run.py --run-id <YYMMDD>_rh_ml
+
+python -m weather_forecasting_pipeline run-all --config configs/target_pres_ml.yaml --fresh
+python scripts/snapshot_run.py --run-id <YYMMDD>_pres_ml
+```
+
+These supplementary runs should be written up separately from the main
+temperature results. MAE/RMSE are target-specific (`%RH` and `hPa`), so
+do not compare their raw magnitudes directly with the temperature MAE/RMSE
+values.
+
+## 10. Review Outputs
 
 Use these files for dissertation result writing:
 
@@ -246,7 +275,7 @@ nea_triglia_short_term_weather_forecasting
 
 If it shows `smoke_weather_forecasting_pipeline`, the artifacts are from the smoke configuration and should not be used as dissertation results.
 
-## 10. Cleaning Generated Outputs Between Runs
+## 11. Cleaning Generated Outputs Between Runs
 
 Generated outputs live under `data/interim/`, `data/processed/`, and
 `artifacts/`. Raw Weathercloud exports under `data/raw/` are never

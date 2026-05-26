@@ -4,6 +4,39 @@ This file records divergences between the written dissertation methodology and t
 
 Use this file only for changes affecting methodology, experimental design, or scientific assumptions. General implementation notes and missing MetDataPy features belong elsewhere.
 
+## 2026-05-26 - Supplementary ML-only humidity and pressure targets
+
+- Affected component:
+  `configs/target_rh_ml.yaml`, `configs/target_pres_ml.yaml`,
+  `README.md`, `docs/configuration.md`,
+  `docs/running-the-experiment.md`.
+- What changed:
+  Added two small supplementary configurations that forecast `rh_pct`
+  and `pres_hpa` using the same Weathercloud-only preparation, horizons,
+  lag features, rolling windows, chronological split, scaling policy,
+  baselines, and core ML models as the main experiment. The model roster
+  is limited to `persistence`, `moving_average`, `climatology`, `ridge`,
+  `random_forest`, and `gradient_boosting`; `dl` is empty. The configs use
+  `training.horizon_workers: 1` by default so the wide tabular ML matrix is
+  not materialized in multiple worker processes on the dissertation host.
+- Why it changed:
+  The dissertation can include a compact robustness check on additional
+  station variables without repeating the expensive full DL/SVR workflow.
+  The selected ML families are the models that were already useful and
+  computationally practical in the temperature experiments.
+- Methodology impact:
+  The primary dissertation experiment remains temperature forecasting
+  with `configs/default.yaml`. These configs add secondary target runs
+  only; they do not change the temperature target, horizons, data source,
+  split policy, leakage assumptions, or evaluation metrics. The worker
+  count only changes scheduling and memory pressure. No NWP, external
+  forecasts, or other-station inputs are introduced.
+- Dissertation update required:
+  Yes if the new runs are reported. Add a separate supplementary-results
+  subsection for relative humidity and pressure, report MAE/RMSE in `%RH`
+  and `hPa`, and avoid comparing raw error magnitudes directly against
+  the temperature results.
+
 ## 2026-05-25 - Ridge uses chronological folds and an iterative solver
 
 - Affected component:
@@ -14,7 +47,10 @@ Use this file only for changes affecting methodology, experimental design, or sc
   `{0.1, 1.0, 10.0, 100.0}`, but alpha selection now uses
   `TimeSeriesSplit(n_splits=5)` with RMSE scoring on the training
   partition. The final model and each CV fold use
-  `sklearn.linear_model.Ridge(solver="lsqr")`.
+  `sklearn.linear_model.Ridge(solver="lsqr")`. To avoid an additional
+  full-matrix sklearn copy during each fold, the wrapper centers the target
+  inside the training fold and fits Ridge with `fit_intercept=False` and
+  `copy_X=False`; predictions add the stored target offset back.
 - Why it changed:
   The default RidgeCV path calls an SVD-based generalized cross-validation
   routine. On the full dissertation design matrix (~95k training rows by
@@ -28,7 +64,9 @@ Use this file only for changes affecting methodology, experimental design, or sc
   Ridge remains the regularised linear baseline and uses the same alpha
   candidates, but the internal alpha-selection protocol changes from
   leave-one-out RidgeCV to five chronological folds with an iterative
-  solver. Baselines, tree ensembles, DL models, forecast targets,
+  solver. The no-copy target-centering path keeps an intercept-equivalent
+  offset without centering the already scaled wide feature matrix inside
+  sklearn. Baselines, tree ensembles, DL models, forecast targets,
   horizons, splits, and metrics are unchanged.
 - Dissertation update required:
   Yes. Where the linear baseline is described, state that ridge alpha is

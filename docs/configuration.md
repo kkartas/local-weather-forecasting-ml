@@ -5,6 +5,8 @@ Experiment settings are loaded from YAML with `weather_forecasting_pipeline.conf
 ## Main Files
 
 - `configs/default.yaml`: default methodology-oriented experiment
+- `configs/target_rh_ml.yaml`: supplementary ML-only relative-humidity experiment
+- `configs/target_pres_ml.yaml`: supplementary ML-only pressure experiment
 - `configs/smoke.yaml`: fast smoke run
 - `configs/weathercloud_mapping.yaml`: Weathercloud source-to-canonical mapping
 
@@ -47,6 +49,22 @@ data:
 The source data is expected at 10-minute resolution. Horizon values are expressed in source time steps, so `6` means one hour.
 
 Both `horizons` and `optional_horizons` are trained. The `optional_horizons` block exists so contributors can keep auxiliary horizons (such as the very short `m10` and the day-ahead `h24`) syntactically separate from the headline dissertation horizons without changing the iteration policy. Entries are merged at run time, sorted by horizon length, and each `(model, horizon)` pair is trained independently. On key collision, `horizons` wins.
+
+### Supplementary target configs
+
+`configs/target_rh_ml.yaml` and `configs/target_pres_ml.yaml` keep the
+same observation-only data preparation, horizons, lag features, rolling
+windows, chronological split, and training-only scaler policy as the main
+configuration. They change only the forecast target to `rh_pct` or
+`pres_hpa` and restrict the model roster to the deterministic baselines
+plus `ridge`, `random_forest`, and `gradient_boosting`.
+
+These files are intended for short supplementary dissertation checks on
+relative humidity and barometric pressure. They do not replace
+`configs/default.yaml`, which remains the primary temperature forecasting
+experiment. Report MAE/RMSE in the natural units of the selected target
+(`%RH` for `rh_pct`, `hPa` for `pres_hpa`) and interpret MAPE only as a
+secondary metric.
 
 ### DL feature policy keys
 
@@ -108,7 +126,8 @@ Supported baseline names are `persistence`, `moving_average`, and
 Supported ML names are `ridge` (default linear baseline; ridge regression
 with alpha in `{0.1, 1, 10, 100}`, selected by five chronological
 expanding-window folds on the training partition and fit with an `lsqr`
-solver), `random_forest`, `gradient_boosting`, and the deprecated names
+solver; the wrapper centers the target per fold and uses sklearn's no-copy
+feature path for RAM stability), `random_forest`, `gradient_boosting`, and the deprecated names
 `linear_regression` and `svr` retained for backwards compatibility with
 run 180526 reproduction. See CHANGES.md (2026-05-25) for the rationale
 behind the substitution, the chronological ridge CV rule, and the SVR
