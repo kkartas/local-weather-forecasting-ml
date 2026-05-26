@@ -1,16 +1,16 @@
-# Delta-run configuration: trains only the models affected by the 2026-05-25
-# methodology updates documented in CHANGES.md. Baselines are retained for
-# zero-cost determinism sanity-checks (~5 s per horizon total).
+# Delta-run configuration: trains only the ridge replacement plus baselines.
+# Baselines are retained for zero-cost determinism sanity-checks
+# (~5 s per horizon total).
 #
 # Reused unchanged from run 180526:
 #   - random_forest (seeded, identical config -> bit-identical output)
 #   - gradient_boosting (seeded, identical config -> bit-identical output)
+#   - lstm, gru, tcn (only valid if the 180526 DL settings are accepted for
+#     the final comparison)
 #
 # Retrained here:
 #   - ridge (new model, replaces linear_regression which had RMSE explosion;
 #     alpha selected by chronological folds inside the training split)
-#   - lstm, gru, tcn (DL stability bundle: max_epochs 40, patience 10,
-#     ReduceLROnPlateau scheduler, gradient clipping)
 #
 # Use:
 #   python -m weather_forecasting_pipeline train --config configs/default_delta.yaml
@@ -66,12 +66,11 @@ scaling:
   method: standard
 
 models:
-  # Delta roster: baselines (sanity check) + changed-model set. Unchanged
-  # models (random_forest, gradient_boosting) are intentionally absent; their
+  # Delta roster: baselines (sanity check) + ridge only. Other model
   # artifacts are reused from runs/180526 via scripts/merge_run_snapshots.py.
   baselines: [persistence, moving_average, climatology]
   ml: [ridge]
-  dl: [lstm, gru, tcn]
+  dl: []
 
 training:
   max_epochs: 40
