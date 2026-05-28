@@ -65,6 +65,9 @@ artifacts/plots/
 ```
 
 Plots summarize model comparison, horizon error, actual/predicted curves, and residual distributions.
+Snapshot analytical plots derive their axis units from `metrics.csv`, so
+supplementary targets such as `rh_pct` and `pres_hpa` are labelled in
+`%RH` and `hPa` rather than temperature units.
 
 ## Reports
 

@@ -80,6 +80,21 @@ DEFAULT_MODEL_ORDER: tuple[str, ...] = (
     "tcn",
 )
 
+TARGET_LABELS: dict[str, str] = {
+    "temp_c": "Temperature",
+    "rh_pct": "Relative humidity",
+    "pres_hpa": "Pressure",
+}
+
+TARGET_UNITS: dict[str, str] = {
+    "temp_c": "deg C",
+    "rh_pct": "%RH",
+    "pres_hpa": "hPa",
+}
+
+_CURRENT_VALUE_LABEL = "Target value"
+_CURRENT_VALUE_UNIT: str | None = None
+
 
 def _pyplot():
     """Lazy import of matplotlib so the module loads without a display."""
@@ -104,6 +119,9 @@ class SnapshotPaths:
     timeseries_start: str | pd.Timestamp | None = None
     timeseries_end: str | pd.Timestamp | None = None
     timeseries_max_gap: str | pd.Timedelta = "1h"
+    target: str | None = None
+    value_label: str | None = None
+    value_unit: str | None = None
 
     def actual_vs_predicted_dir(self) -> Path:
         return self.plots_dir / "actual_vs_predicted"
@@ -119,36 +137,6 @@ def _load_predictions(predictions_dir: Path, model: str, horizon: str) -> pd.Dat
     path = predictions_dir / f"predictions_{model}_{horizon}.csv"
     df = pd.read_csv(path, parse_dates=["ts_utc"])
     return df.dropna(subset=["y_true", "y_pred"])
-
-
-def _plot_scatter(out: Path, model: str, horizon: str, df: pd.DataFrame) -> None:
-    plt = _pyplot()
-    y_true = df["y_true"].to_numpy()
-    y_pred = df["y_pred"].to_numpy()
-    lo = float(min(y_true.min(), y_pred.min()))
-    hi = float(max(y_true.max(), y_pred.max()))
-
-    fig, ax = plt.subplots(figsize=(6.0, 6.0))
-    ax.scatter(y_true, y_pred, s=3, alpha=0.15, color="#1f77b4", rasterized=True)
-    ax.plot([lo, hi], [lo, hi], "k--", linewidth=1.0, label="y = x")
-    ax.set_xlabel("Observed (°C)")
-    ax.set_ylabel("Predicted (°C)")
-    ax.set_title(f"{model} @ {HORIZON_LABELS.get(horizon, horizon)} — Actual vs Predicted")
-    ax.set_aspect("equal", adjustable="box")
-    ax.grid(True, alpha=0.3)
-    ax.legend(loc="upper left")
-
-    mae = float(np.mean(np.abs(y_true - y_pred)))
-    rmse = float(np.sqrt(np.mean((y_true - y_pred) ** 2)))
-    ax.text(
-        0.98, 0.02,
-        f"MAE={mae:.3f} °C\nRMSE={rmse:.3f} °C\nn={len(df):,}",
-        transform=ax.transAxes, ha="right", va="bottom", fontsize=9,
-        bbox=dict(boxstyle="round", facecolor="white", alpha=0.85),
-    )
-    fig.tight_layout()
-    fig.savefig(out, dpi=140)
-    plt.close(fig)
 
 
 def _coerce_plot_timestamp(value: str | pd.Timestamp, ts: pd.Series) -> pd.Timestamp:
@@ -200,125 +188,6 @@ def _select_timeseries_sample(
     return df, label
 
 
-def _plot_timeseries(
-    out: Path,
-    model: str,
-    horizon: str,
-    df: pd.DataFrame,
-    max_points: int = 1500,
-    *,
-    start: str | pd.Timestamp | None = None,
-    end: str | pd.Timestamp | None = None,
-    max_gap: str | pd.Timedelta = "1h",
-) -> None:
-    plt = _pyplot()
-    df, sample_label = _select_timeseries_sample(
-        df,
-        max_points=max_points,
-        start=start,
-        end=end,
-        max_gap=max_gap,
-    )
-
-    fig, ax = plt.subplots(figsize=(11.0, 4.0))
-    ax.plot(df["ts_utc"], df["y_true"], color="black", linewidth=0.9, label="Observed")
-    ax.plot(df["ts_utc"], df["y_pred"], color="#d62728", linewidth=0.9, alpha=0.85, label="Predicted")
-    ax.set_xlabel("Time (UTC)")
-    ax.set_ylabel("Temperature (°C)")
-    ax.grid(True, alpha=0.3)
-    ax.set_title(
-        f"{model} @ {HORIZON_LABELS.get(horizon, horizon)} - Test sample ({sample_label}, {len(df):,} points)"
-    )
-    ax.legend(loc="best")
-    fig.autofmt_xdate()
-    fig.tight_layout()
-    fig.savefig(out, dpi=140)
-    plt.close(fig)
-
-
-def _plot_residuals(out: Path, model: str, horizon: str, df: pd.DataFrame) -> None:
-    plt = _pyplot()
-    df = df.sort_values("ts_utc")
-    resid = (df["y_pred"] - df["y_true"]).to_numpy()
-
-    fig, axes = plt.subplots(1, 2, figsize=(12.0, 4.2))
-
-    ax = axes[0]
-    ax.hist(resid, bins=80, color="#2ca02c", edgecolor="white", alpha=0.85)
-    ax.axvline(0.0, color="black", linewidth=1.0)
-    ax.axvline(resid.mean(), color="red", linewidth=1.0, linestyle="--",
-               label=f"bias={resid.mean():+.3f}")
-    ax.set_xlabel("Error = pred - obs (°C)")
-    ax.set_ylabel("Frequency")
-    ax.set_title("Error distribution")
-    ax.grid(True, alpha=0.3)
-    ax.legend()
-
-    ax = axes[1]
-    # Heteroscedasticity check: predicted vs residual.
-    sample = df.sample(min(8000, len(df)), random_state=42)
-    ax.scatter(sample["y_pred"], (sample["y_pred"] - sample["y_true"]),
-               s=3, alpha=0.2, color="#9467bd", rasterized=True)
-    ax.axhline(0.0, color="black", linewidth=1.0)
-    ax.set_xlabel("Predicted (°C)")
-    ax.set_ylabel("Error (°C)")
-    ax.set_title("Error vs Predicted")
-    ax.grid(True, alpha=0.3)
-
-    fig.suptitle(f"{model} @ {HORIZON_LABELS.get(horizon, horizon)} — Residual analysis", y=1.02)
-    fig.tight_layout()
-    fig.savefig(out, dpi=140, bbox_inches="tight")
-    plt.close(fig)
-
-
-def _plot_metric_comparison(
-    out: Path, metrics: pd.DataFrame, metric: str, ylabel: str,
-    horizons: Sequence[str], model_order: Sequence[str],
-) -> None:
-    plt = _pyplot()
-    pivot = metrics.pivot_table(index="horizon_label", columns="model", values=metric)
-    pivot = pivot.reindex(list(horizons))
-    cols = [m for m in model_order if m in pivot.columns]
-    pivot = pivot[cols]
-
-    fig, ax = plt.subplots(figsize=(13.0, 5.5))
-    pivot.plot(kind="bar", ax=ax, width=0.85, colormap="tab10")
-    ax.set_xlabel("Forecast horizon")
-    ax.set_ylabel(ylabel)
-    ax.set_title(f"Model comparison by horizon — {metric.upper()}")
-    ax.set_xticklabels([HORIZON_LABELS.get(h, h) for h in pivot.index], rotation=0)
-    ax.grid(True, alpha=0.3, axis="y")
-    ax.legend(loc="upper left", ncol=2, fontsize=8)
-    fig.tight_layout()
-    fig.savefig(out, dpi=140)
-    plt.close(fig)
-
-
-def _plot_error_growth(
-    out: Path, metrics: pd.DataFrame,
-    horizons: Sequence[str], model_order: Sequence[str],
-) -> None:
-    plt = _pyplot()
-    fig, ax = plt.subplots(figsize=(9.0, 5.5))
-    for model in model_order:
-        sub = metrics[metrics["model"] == model].set_index("horizon_label").reindex(list(horizons))
-        if "mae" not in sub.columns or sub["mae"].isna().all():
-            continue
-        ax.plot(
-            [HORIZON_LABELS.get(h, h) for h in horizons],
-            sub["mae"].to_numpy(),
-            marker="o", label=model,
-        )
-    ax.set_xlabel("Forecast horizon")
-    ax.set_ylabel("MAE (°C)")
-    ax.set_title("Error growth by horizon — all models")
-    ax.grid(True, alpha=0.3)
-    ax.legend(loc="upper left", ncol=2, fontsize=8)
-    fig.tight_layout()
-    fig.savefig(out, dpi=140)
-    plt.close(fig)
-
-
 def _plot_skill_heatmap(
     out: Path, metrics: pd.DataFrame,
     horizons: Sequence[str], model_order: Sequence[str],
@@ -357,6 +226,177 @@ def _plot_skill_heatmap(
     plt.close(fig)
 
 
+def _unit_suffix() -> str:
+    return f" ({_CURRENT_VALUE_UNIT})" if _CURRENT_VALUE_UNIT else ""
+
+
+def _metric_label(metric: str) -> str:
+    return f"{metric.upper()}{_unit_suffix()}"
+
+
+def _set_current_value_labels(paths: SnapshotPaths) -> None:
+    global _CURRENT_VALUE_LABEL, _CURRENT_VALUE_UNIT
+    target = paths.target
+    if target is None and paths.metrics_csv.exists():
+        metrics = pd.read_csv(paths.metrics_csv)
+        if "target" in metrics.columns and not metrics["target"].dropna().empty:
+            targets = metrics["target"].dropna().astype(str).unique()
+            if len(targets) == 1:
+                target = targets[0]
+    _CURRENT_VALUE_LABEL = paths.value_label or TARGET_LABELS.get(str(target), "Target value")
+    _CURRENT_VALUE_UNIT = paths.value_unit if paths.value_unit is not None else TARGET_UNITS.get(str(target))
+
+
+def _plot_scatter(out: Path, model: str, horizon: str, df: pd.DataFrame) -> None:
+    plt = _pyplot()
+    y_true = df["y_true"].to_numpy()
+    y_pred = df["y_pred"].to_numpy()
+    lo = float(min(y_true.min(), y_pred.min()))
+    hi = float(max(y_true.max(), y_pred.max()))
+
+    fig, ax = plt.subplots(figsize=(6.0, 6.0))
+    ax.scatter(y_true, y_pred, s=3, alpha=0.15, color="#1f77b4", rasterized=True)
+    ax.plot([lo, hi], [lo, hi], "k--", linewidth=1.0, label="y = x")
+    axis_label = f"{_CURRENT_VALUE_LABEL}{_unit_suffix()}"
+    ax.set_xlabel(f"Observed {axis_label}")
+    ax.set_ylabel(f"Predicted {axis_label}")
+    ax.set_title(f"{model} @ {HORIZON_LABELS.get(horizon, horizon)} - Actual vs Predicted")
+    ax.set_aspect("equal", adjustable="box")
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="upper left")
+
+    mae = float(np.mean(np.abs(y_true - y_pred)))
+    rmse = float(np.sqrt(np.mean((y_true - y_pred) ** 2)))
+    unit = f" {_CURRENT_VALUE_UNIT}" if _CURRENT_VALUE_UNIT else ""
+    ax.text(
+        0.98, 0.02,
+        f"MAE={mae:.3f}{unit}\nRMSE={rmse:.3f}{unit}\nn={len(df):,}",
+        transform=ax.transAxes, ha="right", va="bottom", fontsize=9,
+        bbox=dict(boxstyle="round", facecolor="white", alpha=0.85),
+    )
+    fig.tight_layout()
+    fig.savefig(out, dpi=140)
+    plt.close(fig)
+
+
+def _plot_timeseries(
+    out: Path,
+    model: str,
+    horizon: str,
+    df: pd.DataFrame,
+    max_points: int = 1500,
+    *,
+    start: str | pd.Timestamp | None = None,
+    end: str | pd.Timestamp | None = None,
+    max_gap: str | pd.Timedelta = "1h",
+) -> None:
+    plt = _pyplot()
+    df, sample_label = _select_timeseries_sample(
+        df,
+        max_points=max_points,
+        start=start,
+        end=end,
+        max_gap=max_gap,
+    )
+
+    fig, ax = plt.subplots(figsize=(11.0, 4.0))
+    ax.plot(df["ts_utc"], df["y_true"], color="black", linewidth=0.9, label="Observed")
+    ax.plot(df["ts_utc"], df["y_pred"], color="#d62728", linewidth=0.9, alpha=0.85, label="Predicted")
+    ax.set_xlabel("Time (UTC)")
+    ax.set_ylabel(f"{_CURRENT_VALUE_LABEL}{_unit_suffix()}")
+    ax.grid(True, alpha=0.3)
+    ax.set_title(
+        f"{model} @ {HORIZON_LABELS.get(horizon, horizon)} - Test sample ({sample_label}, {len(df):,} points)"
+    )
+    ax.legend(loc="best")
+    fig.autofmt_xdate()
+    fig.tight_layout()
+    fig.savefig(out, dpi=140)
+    plt.close(fig)
+
+
+def _plot_residuals(out: Path, model: str, horizon: str, df: pd.DataFrame) -> None:
+    plt = _pyplot()
+    df = df.sort_values("ts_utc")
+    resid = (df["y_pred"] - df["y_true"]).to_numpy()
+
+    fig, axes = plt.subplots(1, 2, figsize=(12.0, 4.2))
+
+    ax = axes[0]
+    ax.hist(resid, bins=80, color="#2ca02c", edgecolor="white", alpha=0.85)
+    ax.axvline(0.0, color="black", linewidth=1.0)
+    ax.axvline(resid.mean(), color="red", linewidth=1.0, linestyle="--",
+               label=f"bias={resid.mean():+.3f}")
+    ax.set_xlabel(f"Error = pred - obs{_unit_suffix()}")
+    ax.set_ylabel("Frequency")
+    ax.set_title("Error distribution")
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+
+    ax = axes[1]
+    sample = df.sample(min(8000, len(df)), random_state=42)
+    ax.scatter(sample["y_pred"], (sample["y_pred"] - sample["y_true"]),
+               s=3, alpha=0.2, color="#9467bd", rasterized=True)
+    ax.axhline(0.0, color="black", linewidth=1.0)
+    ax.set_xlabel(f"Predicted{_unit_suffix()}")
+    ax.set_ylabel(f"Error{_unit_suffix()}")
+    ax.set_title("Error vs Predicted")
+    ax.grid(True, alpha=0.3)
+
+    fig.suptitle(f"{model} @ {HORIZON_LABELS.get(horizon, horizon)} - Residual analysis", y=1.02)
+    fig.tight_layout()
+    fig.savefig(out, dpi=140, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _plot_metric_comparison(
+    out: Path, metrics: pd.DataFrame, metric: str, ylabel: str,
+    horizons: Sequence[str], model_order: Sequence[str],
+) -> None:
+    plt = _pyplot()
+    pivot = metrics.pivot_table(index="horizon_label", columns="model", values=metric)
+    pivot = pivot.reindex(list(horizons))
+    cols = [m for m in model_order if m in pivot.columns]
+    pivot = pivot[cols]
+
+    fig, ax = plt.subplots(figsize=(13.0, 5.5))
+    pivot.plot(kind="bar", ax=ax, width=0.85, colormap="tab10")
+    ax.set_xlabel("Forecast horizon")
+    ax.set_ylabel(_metric_label(metric))
+    ax.set_title(f"Model comparison by horizon - {metric.upper()}")
+    ax.set_xticklabels([HORIZON_LABELS.get(h, h) for h in pivot.index], rotation=0)
+    ax.grid(True, alpha=0.3, axis="y")
+    ax.legend(loc="upper left", ncol=2, fontsize=8)
+    fig.tight_layout()
+    fig.savefig(out, dpi=140)
+    plt.close(fig)
+
+
+def _plot_error_growth(
+    out: Path, metrics: pd.DataFrame,
+    horizons: Sequence[str], model_order: Sequence[str],
+) -> None:
+    plt = _pyplot()
+    fig, ax = plt.subplots(figsize=(9.0, 5.5))
+    for model in model_order:
+        sub = metrics[metrics["model"] == model].set_index("horizon_label").reindex(list(horizons))
+        if "mae" not in sub.columns or sub["mae"].isna().all():
+            continue
+        ax.plot(
+            [HORIZON_LABELS.get(h, h) for h in horizons],
+            sub["mae"].to_numpy(),
+            marker="o", label=model,
+        )
+    ax.set_xlabel("Forecast horizon")
+    ax.set_ylabel(_metric_label("mae"))
+    ax.set_title("Error growth by horizon - all models")
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="upper left", ncol=2, fontsize=8)
+    fig.tight_layout()
+    fig.savefig(out, dpi=140)
+    plt.close(fig)
+
+
 def _plot_best_per_family(
     out: Path, metrics: pd.DataFrame, horizons: Sequence[str],
 ) -> None:
@@ -383,7 +423,7 @@ def _plot_best_per_family(
         color={"baseline": "#888888", "ml": "#1f77b4", "dl": "#d62728"},
     )
     ax.set_xlabel("Forecast horizon")
-    ax.set_ylabel("MAE (°C) — best model of family")
+    ax.set_ylabel(f"{_metric_label('mae')} - best model of family")
     ax.set_title("Best model per family and horizon")
     ax.set_xticklabels([HORIZON_LABELS.get(h, h) for h in pivot.index], rotation=0)
     ax.grid(True, alpha=0.3, axis="y")
@@ -405,6 +445,7 @@ def generate_snapshot_plots(paths: SnapshotPaths) -> dict[str, int]:
         d.mkdir(parents=True, exist_ok=True)
 
     counter = {"scatter": 0, "timeseries": 0, "residuals": 0, "comparison": 0}
+    _set_current_value_labels(paths)
 
     # Per-model x horizon plots.
     for model in paths.focus_models:
@@ -412,7 +453,7 @@ def generate_snapshot_plots(paths: SnapshotPaths) -> dict[str, int]:
             try:
                 df = _load_predictions(paths.predictions_dir, model, horizon)
             except FileNotFoundError:
-                logger.info("predictions missing for %s %s — skipping", model, horizon)
+                logger.info("predictions missing for %s %s - skipping", model, horizon)
                 continue
             _plot_scatter(avp_dir / f"scatter_{model}_{horizon}.png", model, horizon, df)
             counter["scatter"] += 1
@@ -433,11 +474,11 @@ def generate_snapshot_plots(paths: SnapshotPaths) -> dict[str, int]:
     if paths.metrics_csv.exists():
         metrics = pd.read_csv(paths.metrics_csv)
         _plot_metric_comparison(
-            cmp_dir / "comparison_mae.png", metrics, "mae", "MAE (°C)",
+            cmp_dir / "comparison_mae.png", metrics, "mae", _metric_label("mae"),
             paths.horizons, paths.model_order,
         )
         _plot_metric_comparison(
-            cmp_dir / "comparison_rmse.png", metrics, "rmse", "RMSE (°C)",
+            cmp_dir / "comparison_rmse.png", metrics, "rmse", _metric_label("rmse"),
             paths.horizons, paths.model_order,
         )
         _plot_error_growth(
@@ -451,6 +492,6 @@ def generate_snapshot_plots(paths: SnapshotPaths) -> dict[str, int]:
         _plot_best_per_family(cmp_dir / "best_per_family.png", metrics, paths.horizons)
         counter["comparison"] = 5
     else:
-        logger.warning("metrics csv missing at %s — comparison plots skipped", paths.metrics_csv)
+        logger.warning("metrics csv missing at %s - comparison plots skipped", paths.metrics_csv)
 
     return counter

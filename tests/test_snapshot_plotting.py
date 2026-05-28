@@ -4,6 +4,11 @@ import pandas as pd
 import pytest
 
 from weather_forecasting_pipeline.plotting.snapshot import _select_timeseries_sample
+from weather_forecasting_pipeline.plotting.snapshot import (
+    SnapshotPaths,
+    _set_current_value_labels,
+)
+import weather_forecasting_pipeline.plotting.snapshot as snapshot_plotting
 
 
 def _predictions_frame(times: list[str]) -> pd.DataFrame:
@@ -48,3 +53,29 @@ def test_timeseries_sample_rejects_empty_window():
 
     with pytest.raises(ValueError, match="No prediction rows"):
         _select_timeseries_sample(df, start="2026-03-01", end="2026-03-02")
+
+
+def test_snapshot_value_labels_follow_metrics_target(tmp_path):
+    metrics = pd.DataFrame(
+        [
+            {
+                "target": "rh_pct",
+                "horizon_label": "h01",
+                "model": "persistence",
+                "mae": 1.0,
+            }
+        ]
+    )
+    metrics_csv = tmp_path / "metrics.csv"
+    metrics.to_csv(metrics_csv, index=False)
+
+    _set_current_value_labels(
+        SnapshotPaths(
+            predictions_dir=tmp_path,
+            metrics_csv=metrics_csv,
+            plots_dir=tmp_path / "plots",
+        )
+    )
+
+    assert snapshot_plotting._CURRENT_VALUE_LABEL == "Relative humidity"
+    assert snapshot_plotting._CURRENT_VALUE_UNIT == "%RH"
