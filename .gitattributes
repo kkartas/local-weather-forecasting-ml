@@ -1,0 +1,4 @@
+# The raw Weathercloud exports are UTF-16LE encoded. Mark them as binary so no
+# end-of-line normalization is applied on checkout/commit, which would corrupt
+# the encoding on any platform.
+data/raw/*.csv binary

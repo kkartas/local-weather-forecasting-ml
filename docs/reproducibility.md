@@ -32,16 +32,24 @@ git rev-parse HEAD
 git status --short
 ```
 
-The working tree should be clean except for local raw data and generated
-outputs ignored by `.gitignore`.
+The working tree should be clean except for generated outputs ignored by
+`.gitignore` (the raw Weathercloud exports are committed, but
+`data/interim/`, `data/processed/`, and `artifacts/` are not).
 
 ## Data Scope
 
-Raw Weathercloud station exports are expected under `data/raw/`, but they are
-not committed to the source repository. The experiments use only historical
-single-station observations. Numerical Weather Prediction outputs, external
-forecast products, reanalysis data, satellite data, and neighboring-station
-observations are outside the dissertation methodology.
+The raw Weathercloud station exports used for the dissertation are committed
+under `data/raw/` (monthly CSV files named
+`Weathercloud Nea Triglia Station <YYYY-MM>.csv`), so the experiments can be
+reproduced from a clean checkout without obtaining the data separately. The
+experiments use only historical single-station observations. Numerical
+Weather Prediction outputs, external forecast products, reanalysis data,
+satellite data, and neighboring-station observations are outside the
+dissertation methodology.
+
+Generated or synthetic raw inputs (for example the `smoke_weathercloud.csv`
+produced by `scripts/generate_smoke_raw_data.py`) are not committed; only the
+genuine station exports are tracked.
 
 ## Main Experiment
 
