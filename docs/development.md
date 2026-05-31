@@ -86,9 +86,10 @@ A GitHub Actions workflow at `.github/workflows/ci.yml` runs `pytest`
 and a CLI smoke run on Python 3.10 and 3.11 for every push and pull
 request to `master`. Keep that workflow green before merging changes.
 
-The CLI smoke step uses `configs/smoke.yaml`, which expects Weathercloud
-CSV files under `data/raw/`. Real station exports stay gitignored, so CI
-generates a small synthetic file first:
+The CLI smoke step uses `configs/smoke.yaml`, which reads from the isolated
+`data/raw_smoke/` directory rather than `data/raw/`. This keeps the smoke run
+fast and deterministic on a synthetic file, independent of the committed real
+station exports in `data/raw/`. CI generates the synthetic file first:
 
 ```powershell
 python scripts/generate_smoke_raw_data.py

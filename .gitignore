@@ -10,6 +10,7 @@ htmlcov/
 
 # Local data and generated experiment outputs
 data/raw/*
+data/raw_smoke/
 data/interim/*
 data/processed/*
 data/external/*

@@ -75,7 +75,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument(
         "--skip-svr-models",
         action="store_true",
-        help="Exclude SVR .joblib model files (saves ~5 GB on the default config).",
+        help=(
+            "Exclude the large SVR .joblib model files. SVR is no longer in "
+            "the shipped roster, so this only matters when snapshotting an "
+            "older run whose roster still included SVR (~5 GB)."
+        ),
     )
     p.add_argument(
         "--skip-supervised",

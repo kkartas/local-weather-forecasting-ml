@@ -21,7 +21,7 @@ def write_synthetic_weathercloud_csv(
     output_path: Path,
     *,
     mapping_path: Path,
-    n: int = 220,
+    n: int = 1500,
 ) -> None:
     """Write a semicolon-delimited Weathercloud export matching the mapping config."""
     ts_col, field_cols = _load_mapping_columns(mapping_path)
@@ -57,13 +57,17 @@ def main() -> None:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("data/raw/smoke_weathercloud.csv"),
-        help="Destination CSV path.",
+        default=Path("data/raw_smoke/smoke_weathercloud.csv"),
+        help=(
+            "Destination CSV path. Defaults to the isolated data/raw_smoke "
+            "directory used by configs/smoke.yaml so synthetic data never "
+            "mixes with the committed real exports in data/raw."
+        ),
     )
     parser.add_argument(
         "--rows",
         type=int,
-        default=220,
+        default=1500,
         help="Number of 10-minute observations to generate.",
     )
     args = parser.parse_args()
