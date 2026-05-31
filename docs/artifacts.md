@@ -106,8 +106,9 @@ and callers may pass an explicit display window to
 `SnapshotPaths(timeseries_start=..., timeseries_end=...)` when a known
 data outage would make the default visual sample unsuitable.
 
-Flags `--skip-svr-models`, `--skip-supervised`, `--skip-interim`, and
-`--no-plots` let you trim the snapshot for size when needed. `--force`
+Flags `--skip-supervised`, `--skip-interim`, and `--no-plots` let you trim
+the snapshot for size when needed. `--skip-svr-models` is retained for
+legacy snapshots that still contain SVR artifacts. `--force`
 overwrites an existing snapshot but **preserves an existing
 `CONCLUSION.md`** so AI- or human-authored conclusions are never
 clobbered by re-running the script.

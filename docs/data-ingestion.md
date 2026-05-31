@@ -70,7 +70,9 @@ After MetDataPy ingestion, the adapter sorts by timestamp and checks for duplica
 - log a warning with the duplicate count
 - keep the first row for each duplicated timestamp
 
-This keeps the modeling index unique. A future MetDataPy duplicate-policy API is tracked in `METDATAPY.md`.
+This keeps the modeling index unique. The duplicate policy is passed through
+the MetDataPy Weathercloud ingestion API so the behavior is explicit and
+reproducible.
 
 ## Yearly CSV Files
 

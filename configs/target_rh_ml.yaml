@@ -61,7 +61,7 @@ training:
   # Keep supplementary target runs sequential on the dissertation host. The
   # wide tabular ML matrix is materialized per horizon worker, so parallel
   # workers can exhaust RAM even when CPU threads are capped.
-  horizon_workers: 1
+  horizon_workers: 3
   torch_threads_per_worker: 2
   progress_heartbeat_seconds: 60
   progress_log_epochs: true

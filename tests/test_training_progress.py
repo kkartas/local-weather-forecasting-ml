@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import logging
+import sys
 import time
 from multiprocessing import Manager
+
+import pytest
 
 from weather_forecasting_pipeline.training.progress import (
     SharedTrainingProgressTracker,
@@ -31,6 +34,10 @@ def test_tracker_finish_model_increments_completed():
     assert done["remaining"] == 2
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="multiprocessing.Manager can emit access-violation traces on Windows test shutdown",
+)
 def test_shared_tracker_assigns_monotonic_slots():
     with Manager() as manager:
         tracker = SharedTrainingProgressTracker(total_models=5, manager=manager)
@@ -42,6 +49,10 @@ def test_shared_tracker_assigns_monotonic_slots():
         assert second["remaining"] == 3
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="multiprocessing.Manager can emit access-violation traces on Windows test shutdown",
+)
 def test_shared_tracker_finish_model_increments_completed():
     with Manager() as manager:
         tracker = SharedTrainingProgressTracker(total_models=3, manager=manager)

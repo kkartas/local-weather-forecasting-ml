@@ -25,6 +25,7 @@ The project is designed for reproducible experiments. It ingests raw Weatherclou
 - [Model Training](training.md)
 - [Evaluation And Reporting](evaluation-reporting.md)
 - [Artifacts](artifacts.md)
+- [Reproducibility](reproducibility.md)
 - [Development And Testing](development.md)
 
 ## Command Summary

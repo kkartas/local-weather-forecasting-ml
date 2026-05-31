@@ -95,6 +95,11 @@ python scripts/generate_smoke_raw_data.py
 python -m weather_forecasting_pipeline run-all --config configs/smoke.yaml
 ```
 
+On Windows, tests that spawn `multiprocessing.Manager` or process-pool
+horizon workers are skipped because some Python distributions can emit
+access-violation traces during process shutdown even when assertions pass.
+Linux CI still exercises those multiprocessing paths.
+
 ## Documentation Updates
 
 When code changes affect behavior, update documentation in the same change.
@@ -107,7 +112,8 @@ Examples:
 - new model: update `docs/training.md`
 - new metric or plot: update `docs/evaluation-reporting.md`
 - new artifact path: update `docs/artifacts.md`
-- MetDataPy requirement change: update `METDATAPY.md`
+- MetDataPy integration behavior change: update the relevant data-ingestion,
+  preprocessing, dataset, or training documentation
 - methodology change: update `CHANGES.md`
 
 ## GitHub Pages

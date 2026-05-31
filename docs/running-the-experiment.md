@@ -339,5 +339,5 @@ Check `training.min_dl_train_rows` and the number of rows after chronological sp
 
 ### Results Look Like Smoke Results
 
-Check the project name and horizon set in `artifacts/reports/summary.md`. Dissertation runs should include the default horizons and model families, not only `m10`, `h01`, `linear_regression`, and `gru`.
+Check the project name and horizon set in `artifacts/reports/summary.md`. Dissertation runs should include the default horizons and model families, not only the small smoke-test horizons and models such as `m10`, `h01`, `ridge`, and `gru`.
 

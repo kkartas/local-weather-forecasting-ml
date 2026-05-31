@@ -9,13 +9,21 @@ the sequential default for both horizons.
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 import yaml
 
 from weather_forecasting_pipeline.cli import main as cli_main
+
+
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="spawned process-pool tests can emit access-violation traces on Windows test shutdown",
+)
 
 
 def _write_synthetic_weathercloud_csv(path: Path, n: int = 320) -> None:

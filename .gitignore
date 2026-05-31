@@ -21,6 +21,8 @@ artifacts/reports/*
 
 # Per-run snapshots (created by scripts/snapshot_run.py)
 runs/
+exports/
+tmp/
 
 # Preserve directory layout
 !data/raw/.gitkeep
@@ -39,10 +41,7 @@ Thumbs.db
 
 .[Cc][Ll][Aa][Uu][Dd][Ee]/
 [Cc][Ll][Aa][Uu][Dd][Ee].md
-AGENTS.md
-REVIEW_REPORT.md
-METDATAPY.md
-TO-DO.md
+CHANGES.MD
 
-paper.docx
-/docs/
+docs/superpowers/
+**/.ipynb_checkpoints/

@@ -22,7 +22,7 @@ The pipeline ingests raw 10-minute Weathercloud CSV files, prepares canonical me
 - cyclic time and wind-direction features
 - lag, rolling, and forecast-horizon features
 - baseline models: persistence, moving average, climatology
-- scikit-learn models: linear regression, random forest, gradient boosting, SVR
+- scikit-learn models: ridge regression, random forest, gradient boosting
 - PyTorch models: LSTM, GRU, TCN (TCN dilations auto-sized to sequence length)
 - MAE, RMSE, safe MAPE, and persistence skill score evaluation
 - CSV, JSON, Markdown, plot, model, and scaler artifacts
@@ -59,7 +59,11 @@ pip install -e .
 
 The project requires `metdatapy>=1.3.0` for Weathercloud ingestion and meteorological time-series preparation.
 
-The `pip install -e .` step is required for the `python -m weather_forecasting_pipeline ...` CLI to resolve the package. If you only need to run the test suite you can skip it: `pyproject.toml` adds `src/` to `pythonpath` so `python -m pytest` works from a plain checkout.
+The `pip install -e .` step is required for the `python -m weather_forecasting_pipeline ...` CLI to resolve the package. For development and testing, install the dev extra:
+
+```powershell
+pip install -e ".[dev]"
+```
 
 ## Data
 
@@ -229,8 +233,8 @@ analytical plot set into a self-contained folder under `runs/<run_id>/`:
 # Snapshot using today's date (YYMMDD) as run id; full archive (~7-8 GB)
 python scripts/snapshot_run.py
 
-# Explicit id, lightweight snapshot (skips SVR models and wide supervised parquets)
-python scripts/snapshot_run.py --run-id 180526 --skip-svr-models --skip-supervised
+# Explicit id, lightweight snapshot (skips wide supervised parquets)
+python scripts/snapshot_run.py --run-id 180526 --skip-supervised
 
 # Re-run against an existing snapshot; an existing CONCLUSION.md is preserved
 python scripts/snapshot_run.py --run-id 180526 --force
@@ -239,7 +243,7 @@ python scripts/snapshot_run.py --run-id 180526 --force
 The snapshot folder contains a `README.md` and `manifest.json` describing its contents,
 plus per-model `scatter`/`timeseries`/`residuals` plots for the winning models and
 comparison plots (MAE, RMSE, error growth, skill heatmap, best-per-family) covering the
-whole field. `CONCLUSION.md` is **not** generated automatically — it is intended to be
+whole field. `CONCLUSION.md` is **not** generated automatically - it is intended to be
 authored separately using the snapshot as evidence.
 
 ## Testing
@@ -254,8 +258,11 @@ The tests cover MetDataPy integration, Weathercloud ingestion, timezone conversi
 
 Detailed documentation is available in `docs/`. The `docs/` directory is ready to be published with GitHub Pages by selecting the default branch and `/docs` as the Pages source.
 
+For dissertation reproduction details, see `docs/reproducibility.md`.
+
 ## Notes
 
 Methodology changes are recorded in `CHANGES.md`.
 
-Remaining or future MetDataPy requirements are tracked in `METDATAPY.md`.
+MetDataPy integration behavior is described in `docs/data-ingestion.md` and `docs/preprocessing-features.md`.
+
