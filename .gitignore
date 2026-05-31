@@ -24,6 +24,20 @@ runs/
 exports/
 tmp/
 
+# Run-specific / ad-hoc experiment configs. The canonical configs
+# (default, smoke, target_rh_ml, target_pres_ml, default_delta, example,
+# weathercloud_mapping) stay tracked; one-off resume, local, and
+# Colab-generated configs do not.
+configs/resume_*.yaml
+configs/*_local.yaml
+configs/local_*.yaml
+configs/*_colab.yaml
+
+# Committed dissertation raw data: the Weathercloud station exports are
+# included in the repository so examiners can reproduce the experiments.
+# Generated/synthetic raw inputs (e.g. smoke_weathercloud.csv) stay ignored.
+!data/raw/Weathercloud*.csv
+
 # Preserve directory layout
 !data/raw/.gitkeep
 !data/interim/.gitkeep
@@ -41,7 +55,9 @@ Thumbs.db
 
 .[Cc][Ll][Aa][Uu][Dd][Ee]/
 [Cc][Ll][Aa][Uu][Dd][Ee].md
-CHANGES.MD
+
+# Local methodology change log (kept out of the submitted repository)
+CHANGES.md
 
 docs/superpowers/
 **/.ipynb_checkpoints/

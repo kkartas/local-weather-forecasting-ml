@@ -1,0 +1,135 @@
+# =============================================================================
+# Example experiment configuration (annotated template)
+# =============================================================================
+#
+# Copy this file to create your own experiment configuration, for example:
+#
+#   cp configs/example.yaml configs/my_experiment.yaml
+#
+# then edit the values below. Every key shown here is consumed by
+# `weather_forecasting_pipeline.config.load_config`; see `docs/configuration.md`
+# for the authoritative reference.
+#
+# The shipped, methodology-defining configurations are:
+#   configs/default.yaml      primary temperature-forecasting experiment
+#   configs/target_rh_ml.yaml supplementary relative-humidity ML run
+#   configs/target_pres_ml.yaml supplementary pressure ML run
+#   configs/smoke.yaml        fast software-only smoke check
+#
+# Run-specific, ad-hoc, or resume configurations should follow a name that the
+# repository ignores by convention (see `.gitignore`), e.g.
+# `configs/<name>_local.yaml`, so they are not committed alongside the
+# canonical experiment definitions.
+#
+# Scientific constraints (do not relax without revisiting the dissertation
+# methodology):
+#   - Inputs are single-station Weathercloud observations only.
+#   - No Numerical Weather Prediction output or external forecast product is
+#     used as a model input.
+#   - Splits are chronological; scalers are fit on the training split only.
+# =============================================================================
+
+project:
+  # Free-text experiment name; recorded in metrics and report artifacts.
+  name: example_weather_forecasting_experiment
+  # Seed applied to NumPy, scikit-learn, and PyTorch for reproducibility.
+  random_seed: 42
+
+paths:
+  # Paths are resolved relative to the repository root when this file lives
+  # under `configs/`. Avoid absolute paths so the experiment stays portable.
+  raw_data_dir: data/raw
+  interim_dir: data/interim
+  processed_dir: data/processed
+  artifacts_dir: artifacts
+  mapping_config: configs/weathercloud_mapping.yaml
+
+data:
+  # Only the Weathercloud source is supported by this dissertation pipeline.
+  source: weathercloud
+  # Olson timezone of the raw export; ingestion converts observations to UTC.
+  timezone: Europe/Athens
+  # Native cadence of the raw export. Horizons and lags are counted in steps
+  # of this size, so at 10-minute resolution `6` steps == 1 hour.
+  expected_frequency: 10min
+  # Optional resampling rule (e.g. `30min`); leave blank to keep native cadence.
+  resample_rule:
+  # Forecast target as a canonical variable name (e.g. temp_c, rh_pct, pres_hpa).
+  target: temp_c
+  # Headline forecast horizons, expressed in source time steps.
+  horizons:
+    h01: 6    # 1 hour
+    h03: 18   # 3 hours
+    h06: 36   # 6 hours
+    h12: 72   # 12 hours
+  # Auxiliary horizons trained alongside `horizons` (merged and sorted at run
+  # time). Use this block to keep very short / day-ahead horizons separate from
+  # the headline set without changing the iteration policy. On a key collision,
+  # `horizons` wins. Use `{}` for none.
+  optional_horizons:
+    m10: 1    # 10 minutes
+    h24: 144  # 24 hours
+  # Past-only lag features, in source time steps. Never include future offsets.
+  lags: [1, 3, 6, 12, 24, 72, 144]
+  # Past-only rolling-statistic windows, in source time steps.
+  rolling_windows: [6, 18, 36, 144]
+  # Number of past time steps fed to sequence (DL) models per sample.
+  sequence_length: 144
+  # Derived meteorological features computed by MetDataPy.
+  derived_metrics: [dew_point, vpd, heat_index, wind_chill]
+  # DL feature policy: the sequence axis already encodes recent history, so the
+  # redundant `<col>_lag<n>` columns are dropped from per-timestep DL inputs.
+  # Set to false to keep the wide tabular feature set for DL, or provide an
+  # explicit `dl_feature_columns: [...]` allow-list instead. Tabular ML and
+  # baseline models always use the full feature set.
+  dl_exclude_lag_features: true
+
+split:
+  # Chronological fractions; must sum to 1.0. No shuffling is performed.
+  train: 0.70
+  validation: 0.15
+  test: 0.15
+
+scaling:
+  # Feature scaler delegated to MetDataPy. Fit on the training split only.
+  method: standard
+
+models:
+  # Train every listed model independently for every configured horizon.
+  baselines: [persistence, moving_average, climatology]
+  ml: [ridge, random_forest, gradient_boosting]
+  dl: [lstm, gru, tcn]
+
+training:
+  # DL optimisation budget (Adam + MSE loss, validation-loss early stopping).
+  max_epochs: 40
+  batch_size: 32
+  learning_rate: 0.001
+  # Early-stopping patience, in validation passes.
+  patience: 10
+  # L2 gradient-clipping threshold for DL. Set to null to disable clipping.
+  grad_clip_norm: 1.0
+  # Minimum training rows required before a DL model is trained; smaller
+  # splits skip DL with a warning.
+  min_dl_train_rows: 300
+  # Process-level parallelism over horizons. `1` (default) trains sequentially
+  # and is the safe choice on laptops and shared machines. Higher values train
+  # each horizon in its own process and are capped at
+  # min(value, n_horizons, cpu_count); each worker materializes the wide ML
+  # feature matrix, so raise this only on high-RAM hosts.
+  horizon_workers: 1
+  # Caps each worker's BLAS/MKL/PyTorch thread pool so that
+  # horizon_workers * torch_threads_per_worker stays within the CPU budget.
+  # null auto-resolves to max(1, cpu_count // horizon_workers); ignored when
+  # horizon_workers <= 1.
+  torch_threads_per_worker: 2
+  # Seconds between heartbeat logs during blocking ML `.fit()` calls (0 disables).
+  progress_heartbeat_seconds: 60
+  # Log DL progress every epoch (false logs only first/last/early-stop epochs).
+  progress_log_epochs: true
+
+evaluation:
+  # Small denominator floor that keeps MAPE finite near zero target values.
+  mape_epsilon: 1.0e-6
+  # Maximum points drawn per evaluation plot (downsampled for readability).
+  plot_max_points: 500

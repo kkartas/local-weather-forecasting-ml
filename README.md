@@ -67,7 +67,13 @@ pip install -e ".[dev]"
 
 ## Data
 
-Place one or more Weathercloud CSV exports in:
+The Weathercloud station exports used for the dissertation are included in
+the repository under `data/raw/` (monthly CSV files named
+`Weathercloud Nea Triglia Station <YYYY-MM>.csv`), so the experiments can be
+reproduced directly from a clean checkout.
+
+To run the pipeline on a different station, place your own Weathercloud CSV
+exports in:
 
 ```text
 data/raw/
@@ -108,7 +114,15 @@ Smoke-test configuration:
 configs/smoke.yaml
 ```
 
+Annotated template for new experiments (copy and edit):
+
+```text
+configs/example.yaml
+```
+
 The configuration controls paths, target variable, forecast horizons, lags, rolling windows, sequence length, models, split fractions, scaling, and training parameters.
+
+Ad-hoc, resume, or environment-specific configs (for example `configs/<name>_local.yaml`) are ignored by version control by convention; see `docs/configuration.md`. The committed configurations are the canonical, methodology-defining ones.
 
 ## Usage
 
@@ -207,11 +221,11 @@ python -m weather_forecasting_pipeline train --config configs/default_delta.yaml
 python scripts/snapshot_run.py --run-id <YYMMDD>_delta
 
 # 3. Merge the delta snapshot with the most recent baseline that contains
-#    the unchanged models (e.g. runs/180526), driving the canonical roster
+#    the unchanged models (runs/<baseline_id>), driving the canonical roster
 #    from configs/default.yaml. The merger picks each model's artifacts
 #    from the freshest available source and writes MERGE_PROVENANCE.md.
 python scripts/merge_run_snapshots.py `
-    --baseline runs/180526 `
+    --baseline runs/<baseline_id> `
     --delta runs/<YYMMDD>_delta `
     --full-config configs/default.yaml `
     --output runs/<YYMMDD>_final
@@ -234,10 +248,10 @@ analytical plot set into a self-contained folder under `runs/<run_id>/`:
 python scripts/snapshot_run.py
 
 # Explicit id, lightweight snapshot (skips wide supervised parquets)
-python scripts/snapshot_run.py --run-id 180526 --skip-supervised
+python scripts/snapshot_run.py --run-id <run_id> --skip-supervised
 
 # Re-run against an existing snapshot; an existing CONCLUSION.md is preserved
-python scripts/snapshot_run.py --run-id 180526 --force
+python scripts/snapshot_run.py --run-id <run_id> --force
 ```
 
 The snapshot folder contains a `README.md` and `manifest.json` describing its contents,
@@ -261,8 +275,6 @@ Detailed documentation is available in `docs/`. The `docs/` directory is ready t
 For dissertation reproduction details, see `docs/reproducibility.md`.
 
 ## Notes
-
-Methodology changes are recorded in `CHANGES.md`.
 
 MetDataPy integration behavior is described in `docs/data-ingestion.md` and `docs/preprocessing-features.md`.
 

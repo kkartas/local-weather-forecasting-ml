@@ -8,7 +8,18 @@ Experiment settings are loaded from YAML with `weather_forecasting_pipeline.conf
 - `configs/target_rh_ml.yaml`: supplementary ML-only relative-humidity experiment
 - `configs/target_pres_ml.yaml`: supplementary ML-only pressure experiment
 - `configs/smoke.yaml`: fast smoke run
+- `configs/example.yaml`: annotated template to copy when defining a new experiment
 - `configs/weathercloud_mapping.yaml`: Weathercloud source-to-canonical mapping
+
+### Run-specific configurations
+
+The files above are the canonical, methodology-defining configurations and
+are tracked in version control. Ad-hoc, resume, or environment-specific
+configurations should use a name that the repository ignores by convention
+(see `.gitignore`): `configs/resume_*.yaml`, `configs/*_local.yaml`,
+`configs/local_*.yaml`, or `configs/*_colab.yaml`. This keeps one-off run
+configs out of the committed experiment definitions. Start from
+`configs/example.yaml`, which documents every supported key.
 
 ## Path Settings
 
@@ -127,11 +138,12 @@ Supported ML names are `ridge` (default linear baseline; ridge regression
 with alpha in `{0.1, 1, 10, 100}`, selected by five chronological
 expanding-window folds on the training partition and fit with an `lsqr`
 solver; the wrapper centers the target per fold and uses sklearn's no-copy
-feature path for RAM stability), `random_forest`, `gradient_boosting`, and the deprecated names
-`linear_regression` and `svr` retained for backwards compatibility with
-run 180526 reproduction. See CHANGES.md (2026-05-25) for the rationale
-behind the substitution, the chronological ridge CV rule, and the SVR
-removal.
+feature path for RAM stability), `random_forest`, `gradient_boosting`, and the
+deprecated names `linear_regression` and `svr`, which are retained for
+backwards compatibility but excluded from the shipped default roster. Ridge
+replaces plain OLS to remove the multicollinearity-driven RMSE explosion on
+the wide lag matrix, and SVR is dropped for consistent under-performance and
+intractable fit cost on the full training set.
 
 ## Training Settings
 
@@ -155,8 +167,7 @@ pool inside each spawned horizon worker so that
 machine's CPU budget. Set to `null` (YAML) or omit to auto-resolve to
 `max(1, cpu_count // horizon_workers)`. Has no effect when
 `horizon_workers <= 1`. Required when `horizon_workers` approaches
-`cpu_count` to avoid outer x inner oversubscription (CHANGES.md
-2026-05-25).
+`cpu_count` to avoid outer x inner oversubscription.
 
 Deep-learning models use early stopping based on validation loss with
 patience `patience` over `max_epochs`. The training loop additionally
@@ -165,11 +176,11 @@ internal patience 3, floor 1e-5) so transient validation-loss plateaus
 trigger a learning-rate cut before they trigger early stopping.
 
 `grad_clip_norm` is the L2 threshold for `torch.nn.utils.clip_grad_norm_`
-applied before each optimiser step. The default `1.0` reflects the
-stability bundle introduced in CHANGES.md (2026-05-25) after run 180526
-showed two DL training collapses consistent with exploding gradients.
-Set this key to `null` (YAML) to disable clipping entirely; omit it to
-keep the documented default.
+applied before each optimiser step. The default `1.0` is part of the DL
+training stability bundle and guards against the exploding-gradient events
+that can cause abrupt training collapses on long horizons. Set this key to
+`null` (YAML) to disable clipping entirely; omit it to keep the documented
+default.
 
 If the training split is too small, deep-learning models are skipped with a warning.
 
