@@ -3,7 +3,7 @@
 Usage::
 
     python scripts/snapshot_run.py                       # uses today's YYMMDD
-    python scripts/snapshot_run.py --run-id 180526       # explicit id
+    python scripts/snapshot_run.py --run-id <run_id>     # explicit id
     python scripts/snapshot_run.py --skip-svr-models     # save disk space
     python scripts/snapshot_run.py --skip-supervised     # exclude wide parquets
     python scripts/snapshot_run.py --force               # overwrite existing snapshot

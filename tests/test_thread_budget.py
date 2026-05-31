@@ -1,9 +1,9 @@
 """Tests for the per-worker BLAS/MKL/PyTorch thread budget.
 
-CHANGES.md 2026-05-25 documents a thread cap mechanism so that
+The pipeline caps each worker's thread pool so that
 ``horizon_workers * threads_per_worker`` stays within the available CPU
-budget when running the pipeline with high outer parallelism. These tests
-pin the contract:
+budget when running with high outer parallelism. These tests pin the
+contract:
 
 - ``_resolve_torch_threads_per_worker`` returns ``None`` for the sequential
   case and a positive integer otherwise.

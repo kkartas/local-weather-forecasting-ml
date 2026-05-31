@@ -137,9 +137,9 @@ def make_dl_model(name: str, input_size: int, sequence_length: int = 144) -> nn.
 
 
 # Hyperparameters of the LR scheduler attached to the Adam optimiser inside
-# :func:`train_dl_model_from_datasets`. The values mirror the bundle
-# documented in CHANGES.md (2026-05-25) and are kept module-level so tests
-# and downstream callers can introspect them without re-deriving the values.
+# :func:`train_dl_model_from_datasets`. They are part of the DL training
+# stability bundle and are kept module-level so tests and downstream callers
+# can introspect them without re-deriving the values.
 LR_SCHEDULER_FACTOR = 0.5
 LR_SCHEDULER_PATIENCE = 3
 LR_SCHEDULER_MIN_LR = 1e-5
@@ -167,7 +167,7 @@ def train_dl_model_from_datasets(
     computed batch-wise as a sample-weighted MSE so the early-stopping anchor
     matches a single-pass forward over the validation set.
 
-    Training stability bundle (CHANGES.md 2026-05-25):
+    Training stability bundle:
 
     - A :class:`torch.optim.lr_scheduler.ReduceLROnPlateau` is attached to
       the Adam optimiser and stepped after every validation pass. It halves
@@ -178,8 +178,8 @@ def train_dl_model_from_datasets(
     - ``grad_clip_norm`` (default ``1.0``) clips the parameter gradients
       to the given L2 norm before each optimiser step. Pass ``None`` or a
       non-positive value to disable clipping. This protects against the
-      exploding-gradient events that produced the TCN-h12 and GRU-h24
-      collapses observed in run 180526.
+      exploding-gradient events that can produce abrupt training collapses
+      on the longer forecast horizons.
     """
     torch.manual_seed(seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

@@ -41,23 +41,24 @@ scaling:
   method: standard
 
 models:
-  # Roster updated 2026-05-25 (CHANGES.md):
-  #   - svr removed (never won; negative skill on 3/6 horizons in run 180526)
-  #   - linear_regression -> ridge (alpha in {0.1, 1, 10, 100}, selected by
-  #     chronological folds and fit with an lsqr solver) to remove the RMSE
-  #     explosion observed on the wide lag matrix in run 180526.
+  # Roster notes:
+  #   - svr is excluded from the default roster (consistent under-performance
+  #     and intractable O(n^2-n^3) fit cost on the full training set).
+  #   - the linear baseline is ridge (alpha in {0.1, 1, 10, 100}, selected by
+  #     chronological folds and fit with an lsqr solver) rather than plain OLS,
+  #     to remove the RMSE explosion seen on the wide lag matrix.
   baselines: [persistence, moving_average, climatology]
   ml: [ridge, random_forest, gradient_boosting]
   dl: [lstm, gru, tcn]
 
 training:
-  # DL stability bundle updated 2026-05-25 (CHANGES.md): max_epochs 20 → 40
-  # and patience 5 → 10 give the loss surface time to recover from transient
-  # plateaus; grad_clip_norm protects against the exploding-gradient events
-  # that produced TCN-h12 and GRU-h24 collapses in run 180526. The training
-  # loop additionally attaches a ReduceLROnPlateau scheduler (factor 0.5,
-  # patience 3, min_lr 1e-5); its parameters are intentionally not exposed
-  # here because they are part of the methodology fix, not a tuning knob.
+  # DL stability bundle: max_epochs 40 and patience 10 give the loss surface
+  # time to recover from transient plateaus; grad_clip_norm protects against
+  # the exploding-gradient events that can collapse long-horizon DL training.
+  # The training loop additionally attaches a ReduceLROnPlateau scheduler
+  # (factor 0.5, patience 3, min_lr 1e-5); its parameters are intentionally
+  # not exposed here because they are part of the stability bundle, not a
+  # tuning knob.
   max_epochs: 40
   batch_size: 32
   learning_rate: 0.001

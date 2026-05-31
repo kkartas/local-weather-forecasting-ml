@@ -45,12 +45,14 @@ Supported names:
   wide feature matrix during each fit)
 - `random_forest`
 - `gradient_boosting`
-- `linear_regression` (legacy OLS; retained for run 180526 reproduction
-  but excluded from the default configuration after the RMSE explosion
-  observed on the wide lag matrix — see CHANGES.md 2026-05-25)
-- `svr` (legacy SVR with RBF kernel; retained for run 180526 reproduction
-  but excluded from the default configuration after never winning any
-  horizon and exhibiting O(n²–n³) fit cost — see CHANGES.md 2026-05-25)
+- `linear_regression` (legacy OLS; retained for backwards compatibility
+  but excluded from the default configuration because of the
+  multicollinearity-driven RMSE explosion observed on the wide lag matrix,
+  which ridge regularisation remedies)
+- `svr` (legacy SVR with RBF kernel; retained for backwards compatibility
+  but excluded from the default configuration for consistent
+  under-performance and an intractable O(n²–n³) fit cost on the full
+  training set)
 
 These models use tabular engineered features.
 
@@ -174,9 +176,9 @@ If the training split has fewer rows than `min_dl_train_rows`, deep-learning mod
 
 ### DL training stability bundle
 
-Introduced in CHANGES.md 2026-05-25 after run 180526 produced two DL
-training collapses (TCN at h12, GRU at h24) consistent with exploding
-gradients and over-eager early stopping during transient loss plateaus.
+This bundle guards against DL training collapses on the longer horizons,
+which arise from exploding gradients and over-eager early stopping during
+transient loss plateaus.
 
 The DL training loop in
 `weather_forecasting_pipeline.models.dl_models.train_dl_model_from_datasets`
@@ -203,10 +205,9 @@ early stopping:
 ## Parallel Horizon Training
 
 Long full-config runs were historically dominated by single-threaded RBF
-`SVR` per horizon (now removed from the default roster; see CHANGES.md
-2026-05-25). `RandomForestRegressor` and deep-learning fits are the
-remaining slow stages on most configurations. Set `training.horizon_workers`
-greater than `1` to run each
+`SVR` per horizon (now removed from the default roster). `RandomForestRegressor`
+and deep-learning fits are the remaining slow stages on most configurations.
+Set `training.horizon_workers` greater than `1` to run each
 horizon's full per-horizon pipeline (supervised build, split, scalers,
 baselines, ML, DL, predictions, and per-horizon artifacts) in its own
 worker process.
@@ -235,7 +236,7 @@ training:
   or omitting it activates the auto-formula
   `max(1, cpu_count // horizon_workers)`. The default config ships with
   `horizon_workers: 1` and `torch_threads_per_worker: 2` for the
-  dissertation's target host (CHANGES.md 2026-05-25).
+  dissertation's target host.
 - Each worker reloads `data/interim/prepared.parquet` from disk on
   start. The main process therefore prepares the data once (`ingest`,
   `preprocess`) and spawns workers only for `train`.
@@ -253,9 +254,9 @@ horizon-specific seed offset is applied inside each worker
 (`set_random_seed(project.random_seed + offset)`); identical numerical
 results are produced regardless of `horizon_workers` on small fixtures
 (see `tests/test_parallel_horizons.py`). Float drift on RandomForest in
-practice has not exceeded `1e-5` on the smoke fixture; document any
-material deviation in `CHANGES.md` if it ever appears on the dissertation
-configuration.
+practice has not exceeded `1e-5` on the smoke fixture; treat any material
+deviation on the dissertation configuration as a methodology concern and
+record it in the dissertation.
 
 ## Progress Logging
 

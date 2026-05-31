@@ -42,7 +42,7 @@ def test_baseline_and_ml_smoke(synthetic_station_frame):
 
 
 def test_ridge_smoke(synthetic_station_frame):
-    """``ridge`` is the new default linear baseline (CHANGES.md 2026-05-25).
+    """``ridge`` is the default linear baseline.
 
     Exercises the full fit/predict path so a regression in
     ``make_ml_model("ridge", ...)`` is caught by the test suite. The ridge
@@ -163,11 +163,11 @@ def test_dl_model_lazy_dataset_path_smoke():
 def test_train_dl_model_from_datasets_applies_grad_clipping(monkeypatch):
     """``grad_clip_norm`` must call ``clip_grad_norm_`` once per optimiser step.
 
-    Run 180526 produced two DL collapses (TCN-h12, GRU-h24) consistent with
-    exploding gradients. Gradient clipping is the agreed mitigation
-    (CHANGES.md 2026-05-25). This test pins the contract that the training
-    loop invokes ``torch.nn.utils.clip_grad_norm_`` with the configured
-    norm and is bypassed entirely when the caller passes ``None``.
+    Gradient clipping mitigates the exploding-gradient events that can cause
+    abrupt DL training collapses on long horizons. This test pins the
+    contract that the training loop invokes ``torch.nn.utils.clip_grad_norm_``
+    with the configured norm and is bypassed entirely when the caller passes
+    ``None``.
     """
     import torch
 
@@ -226,8 +226,8 @@ def test_train_dl_model_from_datasets_applies_grad_clipping(monkeypatch):
 def test_train_dl_model_from_datasets_attaches_lr_scheduler():
     """``ReduceLROnPlateau`` must be constructed and stepped during training.
 
-    Pins the scheduler contract from CHANGES.md 2026-05-25 so a refactor
-    that drops the scheduler is caught immediately. The actual rate change
+    Pins the scheduler contract so a refactor that drops the scheduler is
+    caught immediately. The actual rate change
     only triggers after several non-improving epochs, so we assert the
     scheduler was constructed and is in a valid state rather than asserting
     on a learning-rate value the test fixture cannot reliably produce.

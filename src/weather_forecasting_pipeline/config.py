@@ -79,9 +79,9 @@ class TrainingConfig:
     progress_heartbeat_seconds: int = 60
     progress_log_epochs: bool = True
     # ``grad_clip_norm`` controls the L2 gradient-clipping threshold applied
-    # inside the DL training loop. The default 1.0 reflects the stability
-    # bundle documented in CHANGES.md (2026-05-25). Set to ``None`` or a
-    # non-positive value to disable clipping entirely.
+    # inside the DL training loop. The default 1.0 reflects the DL training
+    # stability bundle. Set to ``None`` or a non-positive value to disable
+    # clipping entirely.
     grad_clip_norm: float | None = 1.0
     # ``torch_threads_per_worker`` caps the number of intra-process BLAS/MKL
     # threads each horizon worker is allowed to use. Required to avoid the

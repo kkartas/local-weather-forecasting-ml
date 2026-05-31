@@ -75,12 +75,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument(
         "--baseline",
         required=True,
-        help="Path to the baseline run snapshot (e.g. runs/180526).",
+        help="Path to the baseline run snapshot (e.g. runs/<baseline_id>).",
     )
     p.add_argument(
         "--delta",
         required=True,
-        help="Path to the delta run snapshot (e.g. runs/250525_delta).",
+        help="Path to the delta run snapshot (e.g. runs/<run_id>_delta).",
     )
     p.add_argument(
         "--full-config",
@@ -301,10 +301,10 @@ def _copy_shared_artifacts(baseline: Path, delta: Path, output: Path) -> dict[st
     """Copy configs, interim data, scalers, split metadata, supervised parquets.
 
     The delta snapshot is preferred as the source of truth because it was
-    produced under the methodology updates documented in CHANGES.md
-    2026-05-25. If a category is missing from delta we silently fall back
-    to baseline so a slimmed delta snapshot (``--skip-interim`` etc.) does
-    not lose the corresponding files in the merged output.
+    produced under the latest methodology. If a category is missing from
+    delta we silently fall back to baseline so a slimmed delta snapshot
+    (``--skip-interim`` etc.) does not lose the corresponding files in the
+    merged output.
     """
     provenance: dict[str, str] = {}
     categories: list[tuple[str, Path]] = [
@@ -368,9 +368,9 @@ def _write_provenance(
         "",
         "This snapshot was assembled by `scripts/merge_run_snapshots.py`.",
         "Each artifact below is tagged with its source snapshot. Models",
-        "tagged `delta` were retrained under the methodology updates",
-        "documented in `CHANGES.md` 2026-05-25; models tagged `baseline`",
-        "were reused unchanged on the same data, splits, and seeds.",
+        "tagged `delta` were retrained under the latest methodology; models",
+        "tagged `baseline` were reused unchanged on the same data, splits,",
+        "and seeds.",
         "",
         "## Canonical model roster",
         "",

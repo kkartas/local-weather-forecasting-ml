@@ -114,7 +114,8 @@ Examples:
 - new artifact path: update `docs/artifacts.md`
 - MetDataPy integration behavior change: update the relevant data-ingestion,
   preprocessing, dataset, or training documentation
-- methodology change: update `CHANGES.md`
+- methodology change: update the dissertation methodology and the affected
+  documentation under `docs/`
 
 ## GitHub Pages
 

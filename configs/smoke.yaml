@@ -34,8 +34,8 @@ scaling:
   method: standard
 
 models:
-  # ridge replaces linear_regression in line with default.yaml so CI exercises
-  # the new model factory branch (CHANGES.md 2026-05-25).
+  # ridge is used in line with default.yaml so CI exercises the same model
+  # factory branch as the full experiment.
   baselines: [persistence, moving_average]
   ml: [ridge]
   dl: [gru]

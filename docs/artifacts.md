@@ -135,7 +135,7 @@ workflow:
 
 ```powershell
 python scripts/merge_run_snapshots.py `
-    --baseline runs/180526 `
+    --baseline runs/<baseline_id> `
     --delta runs/<id>_delta `
     --full-config configs/default.yaml `
     --output runs/<id>_final

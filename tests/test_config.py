@@ -50,7 +50,7 @@ def test_load_config_progress_logging_defaults(tmp_path: Path):
     assert cfg.training.progress_heartbeat_seconds == 60
     assert cfg.training.progress_log_epochs is True
     # Missing ``grad_clip_norm`` key falls back to the documented default of
-    # 1.0 (CHANGES.md 2026-05-25). Explicit ``null`` would disable clipping.
+    # 1.0. Explicit ``null`` would disable clipping.
     assert cfg.training.grad_clip_norm == 1.0
 
 

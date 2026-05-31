@@ -120,16 +120,17 @@ def make_ml_model(name: str, random_seed: int, *, rf_n_jobs: int = -1):
     pipeline trains horizons in parallel it passes ``rf_n_jobs=1`` so that
     outer × inner CPU oversubscription does not collapse throughput.
 
-    Notes on roster changes:
+    Notes on the model roster:
 
-    - ``ridge`` is the default linear baseline as of 2026-05-25 because
-      OLS produced an RMSE explosion on the wide lag+rolling feature
-      matrix in run 180526 (CHANGES.md).
+    - ``ridge`` is the default linear baseline because plain OLS produced an
+      RMSE explosion on the wide lag+rolling feature matrix, the signature
+      of multicollinearity-driven extreme predictions that L2 regularisation
+      remedies.
     - ``linear_regression`` (plain OLS) is retained for backwards
-      compatibility with run 180526 reproduction; it is no longer part of
-      the shipped default configuration.
-    - ``svr`` is retained for the same reason but is similarly excluded
-      from the shipped default configuration (CHANGES.md, run 180526).
+      compatibility but is no longer part of the shipped default configuration.
+    - ``svr`` is similarly retained but excluded from the shipped default
+      configuration on the basis of consistent under-performance and an
+      intractable O(n²–n³) fit cost on the full training set.
     """
     if name == "ridge":
         return ChronologicalRidgeCV(alphas=_RIDGE_ALPHAS, n_splits=_RIDGE_CV_SPLITS)
